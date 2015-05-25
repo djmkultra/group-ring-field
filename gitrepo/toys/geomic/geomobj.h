@@ -1,4 +1,4 @@
-\/// Geometric Object: for geometric algebras, 
+/// Geometric Object: for geometric algebras, 
 ///   a product of Spring 012-Summer-012 AGL Reading Group
 /// djmk June 1 2012
 

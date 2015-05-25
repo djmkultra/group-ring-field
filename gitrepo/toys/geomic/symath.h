@@ -88,16 +88,21 @@ namespace Symath {
     /// default behavior:
     ///   set name-string to the null-terminated cstring
     ///   unless the values are 0, 1, -1
-    if( c_str == (char*)0 ) setValue(ZERO);
+    if( c_str == (char*)0 ) 
+      {
+	setValue(ZERO);
+      }
     else if( c_str == (char*)-1 )
       {
 	setValue(NEG);
       }
     else if( c_str == (char*)1 || getValue() == ONE ) 
-      setValue(ONE_);
+      {
+	setValue(ONE_);
+      }
     else if( getValue() == NEG_ONE )
       {
-	setValue(NEG_ONE);
+	setValue(NEG);
       }
          
   }
@@ -241,7 +246,6 @@ namespace Symath {
   /// NOTE: use of smart=pointers probably makes this redundant 
   void nuke() const ///< collapse children (NUKE sub trees)
   {
-         
     collapse( _left );
     collapse( _right );
     clear();
@@ -259,18 +263,53 @@ namespace Symath {
     tree->_left = 0;
     tree->_right = 0;
   }
-      
+
+  static bool isEmpty(const std::string& val) 
+  {
+    return val.empty();
+  }
+  static bool isEmpty(double val)
+  {
+    return false;
+  }
+  static bool isOne(const base_type& val)
+  {
+    return isEmpty(val) || val == ONE || val == ONE_;
+  }
+  static bool isOne(double val)
+  {
+    return val == 1.0;
+  }
+  static bool isNegOne(const std::string& val) 
+  {
+    return !val.empty() && (val.at(0) == '-') && isOne(val.substr(1));
+  }
+  static bool isNegOne(double val) 
+  {
+    return val == -1.0;
+  }
+  static bool isZero(const base_type& val)
+  {
+    return val == ZERO || val == NEG_ZERO;
+  }
+
+  // == "-"
+  bool isNegSign() const 
+  {
+    return (getValue() == NEG && !_left && !_right);
+  }
+
   //-----------------------------------------------------------------------------
   /// -(*this)  NEGATE uinary
   Sym operator-() const   ///< NEGATE uninary
   { 
          
     /// -0
-    if( getValue() == ZERO || getValue() == NEG_ZERO )  
+    if ( isZero(getValue()) )  
       return Sym(ZERO);
          
     /// -1
-    if( isEmpty(getValue()) || getValue() == ONE || getValue() == ONE_ )
+    if ( isOne(getValue()) )
       {
 	return Sym( NEG + ONE , 
 		    NEG,
@@ -289,21 +328,24 @@ namespace Symath {
 	    std::cerr << "bad operator-()" << std::endl;
 	  }
       }
-         
+    
+    // - (x - y) = y - x
+    if ( this->_op == MINUS && _left && _right ) 
+      {
+	return Sym ( _right->getValue() + MINUS + _left->getValue(),
+		     MINUS,
+		     _right->clone(),
+		     _left->clone()
+		     );
+      }
+
     /// new node - , A
     return Sym( NEG + getValue(),
 		NEG,
-		new Sym(ONE) 
+		new Sym(*this) 
 		);
   }
       
-  bool isEmpty(const std::string& val) const {
-    return val.empty();
-  }
-  bool isEmpty(double val) const {
-    return false;
-  }
-
   //-----------------------------------------------------------------------------
   /// this * s  MUL
   Sym operator*( const Sym &s ) const   ///< MULTIPLICATION
@@ -311,16 +353,25 @@ namespace Symath {
     base_type l = getValue();
     base_type r = s.getValue();
          
-    if ((isEmpty(l) || l == ONE_ || l == ONE) && (isEmpty(r) || r == ONE || r == ONE_)) {
-      return Sym(ONE);
-    }
+    if ( isNegSign() && isOne(r) )  // "-" * 1
+      {
+	return Sym( NEG + ONE,
+		    NEG,
+		    new Sym(ONE)
+		    );
+      }
+
+    if ( isOne(l) && isOne(r) )  // 1 * 1
+      {
+	return Sym(ONE);
+      }
 	 
-    if( l == ZERO || l == NEG_ZERO || r == ZERO || r == NEG_ZERO )
+    if( isZero(l) || isZero(r) )  // 0 * x
       {
 	return Sym(ZERO);
       }   
          
-    if( (l == NEG) && (_left == 0)  && !isEmpty(r) && (r != ONE_) && (r != ONE) && (s._op != NEG) )  /// fresh neg
+    if( isNegSign() && !isOne(r) && (s._op != NEG) )  /// "-" * x
       {
             
 	return Sym( getValue() + r, 
@@ -329,12 +380,12 @@ namespace Symath {
 		    );
       }
          
-    if( isEmpty(l) || l == ONE_ || l == ONE )
+    if( isOne(l) )
       {
 	return s;
       }
          
-    if( isEmpty(r) || r == ONE_ || r == ONE ) 
+    if( isOne(r) ) 
       {
 	return Sym(*this);
       }
@@ -345,14 +396,14 @@ namespace Symath {
       {
 	l = l.substr(1);
 	r = r.substr(1);
-	if( isEmpty(l) || l == ONE || l == ONE_ ) 
+	if( isOne(l) )
 	  {
 	    if( s._left )  // maybe there was a fresh neg to your right???
 	      return Sym(*(s._left));
 	    std::cout << " wtf?  " << getValue() << " * " << s.getValue() << std::endl;
 	    return Sym( ONE_ );
 	  }
-	if( isEmpty(r) || r == ONE || r == ONE_ )
+	if( isOne(r) )
 	  {
 	    if( _left )
 	      {
@@ -387,7 +438,7 @@ namespace Symath {
          
     if( _op == NEG ) // left side is negative
       {
-	if( (l.substr(1) == ONE || l.substr(1) == ONE_ || isEmpty(l.substr(1))) && (r == ONE || r == ONE_ || isEmpty(r))) {
+	if( isOne(l.substr(1)) && isOne(r) ) {
 	  return Sym( NEG + ONE,
 		      NEG,
 		      new Sym(ONE));
@@ -404,7 +455,7 @@ namespace Symath {
 				 )
 			);
 	  }
-	else if ( r == ONE || r == ONE_ || isEmpty(r)) {
+	else if ( isOne(r) ) {
 	  return Sym( NEG + ONE,
 		      NEG,
 		      new Sym(ONE));
@@ -550,19 +601,27 @@ namespace Symath {
   //-----------------------------------------------------------------------------
   /// this + s   ADD
   Sym operator+( const Sym &s ) const   ///< ADDITION 
-  {  
-         
+  {           
     base_type l = getValue();
     base_type r = s.getValue();
          
+    /// 0 + 0 = 0
+    if ( isZero(l) && isZero(r) )
+      {
+	return Sym(ZERO);
+      }
+    
     /// 0 + s
-    if( l == ZERO || l == NEG_ZERO ) 
+    if( isZero(l) )
       { 
 	return s; 
       }
     /// this + 0
-    if( r == ZERO || r == NEG_ZERO )  return *this;
-         
+    if( isZero(r) )
+      {
+	return *this;
+      }
+   
     /// 1s
     if( r.empty() ) r = ONE;
     if( l.empty() ) l = ONE;
@@ -578,6 +637,10 @@ namespace Symath {
 	      {
 		return Sym(ZERO);
 	      }
+	    if ( isOne(r.substr(1)) && isOne(l) ) 
+	      {
+		return Sym(ZERO);
+	      }
 	  }
       }
     else /// +-this += s
@@ -587,6 +650,10 @@ namespace Symath {
 	  {
 	    /// CANCELLATION OF IDENTICAL TERMS chcek to see if we cancel
 	    if( l.substr(1) == r )  // see if a-a = 0
+	      {
+		return Sym(ZERO);
+	      }
+	    if ( isOne(l.substr(1)) && isOne(r) )  // Ones are special
 	      {
 		return Sym(ZERO);
 	      }
@@ -619,15 +686,23 @@ namespace Symath {
   { 
     base_type l = getValue();
     base_type r = s.getValue();
-         
+
+    /// fucking ones are a pain in the ass.
+    if ( (isOne(l) && isNegOne(r)) || (isOne(r) && isNegOne(l)) ) 
+      {
+	clear();
+	setValue(ZERO);
+	return *this;
+      }
+
     /// 0 += s
-    if( l == ZERO || l == NEG_ZERO ) 
+    if( isZero(l) ) 
       { 
 	*this = s; 
 	return *this; 
       }
     /// this += 0
-    if( r == ZERO || r == NEG_ZERO )  return *this;
+    if( isZero(r) )  return *this;
          
     /// 1s
     if( r.empty() ) r = ONE;
@@ -643,7 +718,12 @@ namespace Symath {
 	    if( l == r.substr(1) )  /// left 
 	      {
 		clear();
-		s.clear();
+		setValue(ZERO);
+		return *this;
+	      }
+	    if ( isOne(l) && isOne(r.substr(1)) )
+	      {
+		clear();
 		setValue(ZERO);
 		return *this;
 	      }
@@ -659,7 +739,12 @@ namespace Symath {
 	      {
 		clear();
 		setValue(ZERO);
-		s.clear();  
+		return *this;
+	      }
+	    if ( isOne(l.substr(1)) && isOne(r.substr(1)))
+	      {
+		clear();
+		setValue(ZERO);
 		return *this;
 	      }
 	  }
