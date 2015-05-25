@@ -44,16 +44,30 @@ public:
    //
    /// use -1 for a scalar/"one" basis element
    //
-   E( int element_id, bool is_bit_vector_value=false )  
-   :_id(is_bit_vector_value ? element_id : element_id >= 0 ? 1<<element_id : 0)  
-   {   }
-
+   explicit E( int element_id )  
+   :_id(element_id > 0 ? 1<<element_id : 0)  
+   { 
+     if (element_id > LAST_ELEM_ID) 
+       std::cout << "attempting to make a basis element with dimension out of range: " << element_id << " > " << LAST_ELEM_ID << std::endl;
+   }
+   E( int bitvector, bool is_bitvector ) 
+   : _id( is_bitvector ? bitvector : (bitvector > 0 ? 1<<bitvector : 0))
+   {
+   }
+   E(const E& e) 
+   :_id(e._id) {}
+   
    //--------------------------
    /// product options:
    enum PRODUCT_OPTIONS {
       standard   = 0,
-      involution = 1<<1,  
-      reversion  = 1<<2,
+      geometric  = 1<<1,
+      dot        = 1<<2,
+      wedge      = 1<<3,
+      lefty      = 1<<4,
+      righty     = 1<<5,
+      involution = 1<<6,  
+      reversion  = 1<<7,
       conjugate  = involution | reversion,
       PRODUCT_OPTION_LAST
    };
@@ -65,10 +79,6 @@ public:
    {
       setProduct(el,er,e1_opt,e2_opt);
    }
-   
-   /// copy constructor
-   //
-   E( const E &e ) : _id(e._id)  {  }
    
    /// assignment operator
    //
@@ -83,25 +93,30 @@ public:
    //
    enum {
       /// for external reference:
-      SCALAR_ID      = -1,   /// construct with this ID for scalar element
-      FIRST_ELEM_ID  = 0,    /// index of first "proper" basis element (1, scalar)
-      e0             = 1<<0, 
-      e1             = 1<<1,
-      e2             = 1<<2,
-      e3             = 1<<3,
-      e4             = 1<<4,
-      e5             = 1<<5,
+     SCALAR_ID      = -1,   /// construct with this ID for scalar element
+     FIRST_ELEM_ID  = 0,    /// index of first "proper" basis element (1, scalar)
+     e0             = 1<<0, 
+     e1             = 1<<1,
+     e2             = 1<<2,
+     e3             = 1<<3,
+     eminus         = 1<<23,  /// positive conformal coordinate e-e- = -1
+     eplus          = 1<<24,  /// negative conformal coordinate e+e+ = +1
+     n0             = 1<<25,  /// zero element = (e- - e+)/2
+     ni             = 1<<26,  /// infinity element = e- + e+
+     LAST_ELEM_ID   = 27,     /// the rest are special   
       
-      /// used internally:
-      SCALAR_BIT_VEC = 0,   ///the scalar element is actually represented as 0 internally
-      SIGN_BIT       = 1 << max_dim /// we use the type's sign-bit to track sign changes internally
+     /// used internally:
+     SCALAR_BIT_VEC = 0,   ///the scalar element is actually represented as 0 internally
+     SIMPLIFY_CONFORMAL = 1 << (max_dim - 1),   /// need to rectify use of e+,e-,n0,ni
+     SIGN_BIT       = 1 << max_dim /// we use the type's sign-bit to track sign changes internally
    };
          
    
    static E psuedoScalar( int dim ) 
    {
       value_type bv = value_type( 0 );
-      for( int i=0; i<dim; ++i ) bv |= 1<<i;
+      for( int i = 0; i < dim; ++i ) 
+	bv |= 1<<i;
       return E( bv, true );
    }
    
@@ -111,6 +126,9 @@ public:
    //
    char getSign() const { return _id & SIGN_BIT ? -1 : 1; }
    
+   //---------------
+   // Do we need to simplify the basis for conformal elements e+,e-,n0,ni?
+   bool needsConformalSimplify() const { return _id & SIMPLIFY_CONFORMAL; }
    
    //-----------------------------------------------------------------
    //
@@ -121,7 +139,7 @@ public:
    {
       /// TODO: need elegant way to count the number of 1's in a bit-vector
       int count = 0;
-      for(int i=0; i<max_dim; ++i) count += _id & 1<<i ? 1 : 0;
+      for(int i=0; i<LAST_ELEM_ID; ++i) count += _id & 1<<i ? 1 : 0;
       return count;
    }
    
@@ -139,9 +157,14 @@ public:
    std::ostream &operator<<(std::ostream &os) const
    {
       //if( _id & SIGN_BIT ) os << "-";
-      if( _id ) os << "e";
-      for(int i=0; i<max_dim; ++i)
-         if( _id & 1<<i ) os << i;
+      for(int i=0; i<LAST_ELEM_ID; ++i) {
+	int bit = _id & 1<<i;
+	if      (bit == eminus) os << "e-";
+	else if (bit == eplus)  os << "e+";
+	else if (bit == n0)     os << "n0";
+	else if (bit == ni)     os << "ni";
+	else if (bit)           os << "e" << i;
+      }
       return os;
    }
    
@@ -151,7 +174,7 @@ public:
    ///  this allows the class to have all the native properties of the 
    ///  value_type used internally.  This is a dangerous trick, so beware.
    //
-   operator bit_vector () const { return _id & ~SIGN_BIT; }
+   operator bit_vector () const { return _id & ~(SIGN_BIT | SIMPLIFY_CONFORMAL); }
    
 protected:
    bit_vector _id;
@@ -169,7 +192,7 @@ protected:
       int swaps  = 0; ///< swaps required to sort assending product
       
       /// TODO: there must be a faster/more efficient way than checking every bit 
-      for(int i=0; i < max_dim; ++i)  
+      for(int i=0; i < LAST_ELEM_ID; ++i)  
       { 
          /// count number of basis swaps required to sort
          lcount += left  & 1<<i ? 1 : 0;
@@ -180,13 +203,68 @@ protected:
       /// after cancellation of identical basis elements we have xor!
       _id = left ^ right;
 
+      /// Argh, conformal special elements need special helps.
+      bool epleft   = left  & eplus;
+      bool epright  = right & eplus;
+      bool emleft   = left  & eminus;
+      bool emright  = right & eminus;
+      bool n0left   = left  & n0;
+      bool n0right  = right & n0;
+      bool nileft   = left  & ni;
+      bool niright  = left  & ni;
+
+      // Things that shouldn't happen: e+,e-,n0,ni are all tied up together only one set
+      // at a time.  We only expect to see one or the other in a basis.
+      if (((epleft | emleft) & (n0left | nileft)) |
+	  ((epright | emright) & (n0right | niright))) {
+	std::cout << "***** We have invalid basis here " << left << " * " << right << " = " << (*this);
+      }
+
+      //  e+ni, e-n0, e-e+ni etc needs to be simplified 
+      if ((epleft | emleft) && (n0right | niright)) {
+	std::cout << "***** Need to simplify conformal " << left << " * " << right << " = " << (*this);
+	_id |= SIMPLIFY_CONFORMAL;
+      }
+      if ((epright | emright) && (n0left | nileft)) {
+	std::cout << "***** Need to simplify conformal " << left << " * " << right << " = " << (*this);
+	_id |= SIMPLIFY_CONFORMAL;
+      }
+
       _id = swaps % 2 ? _id | SIGN_BIT : _id;  ///< sign is neg for odd swaps, pos otherwise;
+
+      /// e-e- = -1
+      if (emleft && emright) {  
+	_id = _id & ~(_id & SIGN_BIT);
+      }
+
+      // Dot n0.ni = -1 ni.n0 = -1
+      if (left_opt & dot) {   /// probably will never be used here
+	if (n0left && niright) {
+	  _id = _id & ~(_id & SIGN_BIT);
+	}
+	if (nileft && n0right) {
+	  _id = _id & ~(_id & SIGN_BIT);
+	}
+      } else {  // Wedge n0^ni = e-e+    ni^n0 = -e-e+
+	if ((n0left && niright) || (nileft && n0right)) {
+	  _id = _id & ~(n0 | ni);
+	  _id = _id | (eminus | eplus);
+	  if (nileft && n0right) {
+	    _id = _id & ~(_id & SIGN_BIT);
+	  }
+	}
+      }
       
       /// options:
       _id = left_opt  & involution ? lgrade   % 2 ? _id ^ SIGN_BIT : _id : _id;
       _id = left_opt  & reversion  ? lgrade/2 % 2 ? _id ^ SIGN_BIT : _id : _id;
       _id = right_opt & involution ? rcount   % 2 ? _id ^ SIGN_BIT : _id : _id;
       _id = right_opt & reversion  ? rcount/2 % 2 ? _id ^ SIGN_BIT : _id : _id;
+
+      /// n0n0 = 0   nini = 0
+      if ((n0left && n0right) || (nileft && niright)) {
+	_id = 0;
+      }
    }
    
 };
@@ -203,6 +281,10 @@ const E<>    e3     (3);
 const E<>    e4     (4);
 const E<>    e5     (5); 
 ///....
+const E<>    eminus (23);  // conformal coordinate e+
+const E<>    eplus  (24);  // conformal coordinate e- | e-e- = -1
+const E<>    n0     (25);  // zero element = (e- - e+)/2
+const E<>    ni     (26);  // infinity element = e- + e+
 
 /// Despite auto-cast, this external method works, it resolves before the cast
 template< class BV_T >
@@ -413,11 +495,11 @@ public:
    /// Complement this * -I^dim
    GO dual( int dim ) const
    {
-      const basis_type I = basis_type::psuedoScalar( dim );
-      GO compme;
-      for( EMapCIter emi = _coefs.begin(), END = _coefs.end(); emi != END; ++emi )
-         compme._coefs[ basis_type( (*emi).first, I ) ] = (*emi).second;
-      return compme;
+     const basis_type I(basis_type::psuedoScalar( dim ));
+     GO compme;
+     for( EMapCIter emi = _coefs.begin(), END = _coefs.end(); emi != END; ++emi )
+       compme._coefs[ basis_type( (*emi).first, I ) ] = (*emi).second;
+     return compme;
    }
 
    //----------------------------------------------------------
