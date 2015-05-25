@@ -15,19 +15,23 @@ int main( int argc, char **argv )
   GOsym N0 = GOsym::nullVector(S("0"),S("0"),S("0"));
   std::cout << " N0 = " << N0 << " = " << GOsym::n0() << std::endl;
   std::cout << " N0N0 = " << N0*N0 << "  .  " << inner(N0,N0) << std::endl;
+  std::cout << " N0N0 = " << GOsym::product<GOsym::GEOMETRIC>(N0,N0) << std::endl;
 
   GOsym E0 = GOsym(S("1"),e0);
   std::cout << E0 << " * " << E0 << " = " << E0 * E0 << std::endl;
   GOsym E1 = GOsym(S("1"),e1);
   std::cout << E1 << " * " << E1 << " = " << E1 * E1 << std::endl;
   std::cout << " n0ni " << GOf::n0() * GOf::ni() << std::endl;
+  std::cout << " n0.ni " << GOf::product<GOf::INNER>(GOf::n0(), GOf::ni()) << std::endl;
   std::cout << " n0n0 " << GOf::n0() * GOf::n0() << std::endl;
   std::cout << " nini " << GOf::ni() * GOf::ni() << std::endl;
 
   GOf W = GOf::nullVector(1, 2, 3);
-  std::cout << " W homogenious = " << W << std::endl;
+  std::cout << " W homogenious = " << W << "  W.W = " << inner(W,W) << std::endl;
+  std::cout << " ni.W = -coeff(n0) = -1 : " << inner(GOf::ni(),W) << " == " << GOf::n0() << std::endl;
   GOsym Ws = GOsym::nullVector(S("w1"),S("w2"),S("w3"));
   std::cout << " Ws = " << Ws << std::endl;
+  std::cout << " Ws.Ws = " << inner(Ws,Ws) << std::endl;
   GOsym Em = GOsym(S("1"),eminus);
   GOf Eem = GOf(1.0, eminus);
   std::cout << " " << Eem << " * " << Eem << " = " << Eem * Eem << std::endl;
@@ -42,6 +46,7 @@ int main( int argc, char **argv )
   GOf A(0.0, 1.0, 2.0, 3.0);
   GOsym As(S("0"), S("a1"), S("a2"), S("a3"));
   std::cout << " A  = " << A << std::endl;
+  std::cout << " AA = " << A * A << std::endl;
   std::cout << " A^(-1) = " << inverse(A) << std::endl;
   std::cout << " As = " << As << std::endl;
   std::cout << " As^(-1) = " << inverse(As) << std::endl;
