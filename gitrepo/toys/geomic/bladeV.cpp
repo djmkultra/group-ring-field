@@ -12,6 +12,32 @@ using namespace std;
 
 int main( int argc, char **argv )
 {
+
+  
+   GOsym E0 = GOsym(S("1"),e0);
+   std::cout << E0 << " * " << E0 << " = " << E0 * E0 << std::endl;
+   GOsym E1 = GOsym(S("1"),e1);
+   std::cout << E1 << " * " << E1 << " = " << E1 * E1 << std::endl;
+   
+
+   GOf W = GOf::nullVector(1, 2, 3);
+   std::cout << " W homogenious = " << W << std::endl;
+   GOsym Ws = GOsym::nullVector(S("w1"),S("w2"),S("w3"));
+   std::cout << " Ws = " << Ws << std::endl;
+   GOsym N0 = GOsym::nullVector(S("0"),S("0"),S("0"));
+   GOsym Em = GOsym(S("1"),eminus);
+   GOf Eem = GOf(1.0, eminus);
+   std::cout << " " << Eem << " * " << Eem << " = " << Eem * Eem << std::endl;
+   std::cout << " e-e- = " << Em << " * " << Em << " = " << Em * GOsym(S("1"),eminus) << std::endl;
+   std::cout << " N0 = " << N0 << " = " << GOsym::n0() << std::endl;
+   std::cout << " N0N0 = " << N0*N0 << "  .  " << inner(N0,N0) << std::endl;
+   std::cout << " Ni = " << GOsym::ni() << std::endl;
+   std::cout << " N0^Ws = " << wedge(N0,Ws) << std::endl;
+   std::cout << " N0.Ws = " << inner(N0,Ws) << std::endl;
+   GOsym Ni = GOsym::ni();
+   std::cout << " Ni.Ws = " << inner(Ni,Ws) << std::endl;
+
+   std::cout << std::endl << std::endl;
    GOf A(0.0, 1.0, 2.0, 3.0);
    GOsym As(S("0"), S("a1"), S("a2"), S("a3"));
    std::cout << " A  = " << A << std::endl;
@@ -60,6 +86,6 @@ int main( int argc, char **argv )
    std::cout << " C - C = " << Cs - Cs << std::endl;
    std::cout << " C + C = " << Cs + Cs << std::endl;
    std::cout << " C * D - C . D - C ^ D = " << Cs * Ds - inner(Cs, Ds) - wedge(Cs, Ds) << std::endl;
-   
+   std::cout << std::endl << std::endl;
   return 0;
 }

@@ -36,13 +36,13 @@ public:
    typedef int bit_vector;   ///< int = max 32dim, long long int max 63dim..
    typedef bit_vector value_type;
    const static int max_dim = std::numeric_limits<bit_vector>::digits;
+   
    //
    //-----------------------------------------------------------------
    
-   
    //-----------------------------------------------------------------
    //
-   /// use -1 for a scalar/"one" basis element
+   /// use 0 for a scalar/"1s" basis element
    //
    explicit E( int element_id )  
    :_id(element_id > 0 ? 1<<element_id : 0)  
@@ -93,42 +93,35 @@ public:
    //
    enum {
       /// for external reference:
-     SCALAR_ID      = -1,   /// construct with this ID for scalar element
      FIRST_ELEM_ID  = 0,    /// index of first "proper" basis element (1, scalar)
-     e0             = 1<<0, 
+     SCALAR_ID      = 0,    /// construct with this ID for scalar element
+     e0             = 1<<0, /// scalar basis function, generally not printed out. 
      e1             = 1<<1,
      e2             = 1<<2,
      e3             = 1<<3,
-     eminus         = 1<<23,  /// positive conformal coordinate e-e- = -1
-     eplus          = 1<<24,  /// negative conformal coordinate e+e+ = +1
-     n0             = 1<<25,  /// zero element = (e- - e+)/2
-     ni             = 1<<26,  /// infinity element = e- + e+
+     eminus         = 1<<25,  /// positive conformal coordinate e-e- = -1
+     eplus          = 1<<26,  /// negative conformal coordinate e+e+ = +1
      LAST_ELEM_ID   = 27,     /// the rest are special   
       
      /// used internally:
      SCALAR_BIT_VEC = 0,   ///the scalar element is actually represented as 0 internally
-     SIMPLIFY_CONFORMAL = 1 << (max_dim - 1),   /// need to rectify use of e+,e-,n0,ni
      SIGN_BIT       = 1 << max_dim /// we use the type's sign-bit to track sign changes internally
    };
          
-   
+   /// Get I_dim = e1e2e3..edim
    static E psuedoScalar( int dim ) 
    {
       value_type bv = value_type( 0 );
-      for( int i = 0; i < dim; ++i ) 
+      for( int i = 1; i <= dim; ++i ) 
 	bv |= 1<<i;
       return E( bv, true );
    }
    
    //-----------------------------------------------------------------
    //
-   /// get the sign change if any, using char because it's the smallest type we can do math with
+   /// get the sign change if any
    //
-   char getSign() const { return _id & SIGN_BIT ? -1 : 1; }
-   
-   //---------------
-   // Do we need to simplify the basis for conformal elements e+,e-,n0,ni?
-   bool needsConformalSimplify() const { return _id & SIMPLIFY_CONFORMAL; }
+   int getSign() const { return _id & SIGN_BIT ? -1 : 1; }
    
    //-----------------------------------------------------------------
    //
@@ -139,7 +132,7 @@ public:
    {
       /// TODO: need elegant way to count the number of 1's in a bit-vector
       int count = 0;
-      for(int i=0; i<LAST_ELEM_ID; ++i) count += _id & 1<<i ? 1 : 0;
+      for(int i=1; i<LAST_ELEM_ID; ++i) count += _id & 1<<i ? 1 : 0;
       return count;
    }
    
@@ -161,8 +154,7 @@ public:
 	int bit = _id & 1<<i;
 	if      (bit == eminus) os << "e-";
 	else if (bit == eplus)  os << "e+";
-	else if (bit == n0)     os << "n0";
-	else if (bit == ni)     os << "ni";
+	else if (bit == e0)     os << "_";
 	else if (bit)           os << "e" << i;
       }
       return os;
@@ -174,7 +166,7 @@ public:
    ///  this allows the class to have all the native properties of the 
    ///  value_type used internally.  This is a dangerous trick, so beware.
    //
-   operator bit_vector () const { return _id & ~(SIGN_BIT | SIMPLIFY_CONFORMAL); }
+   operator bit_vector () const { return _id & ~(SIGN_BIT); }
    
 protected:
    bit_vector _id;
@@ -192,7 +184,7 @@ protected:
       int swaps  = 0; ///< swaps required to sort assending product
       
       /// TODO: there must be a faster/more efficient way than checking every bit 
-      for(int i=0; i < LAST_ELEM_ID; ++i)  
+      for(int i=1; i < LAST_ELEM_ID; ++i)  
       { 
          /// count number of basis swaps required to sort
          lcount += left  & 1<<i ? 1 : 0;
@@ -204,76 +196,24 @@ protected:
       _id = left ^ right;
 
       /// Argh, conformal special elements need special helps.
-      bool epleft   = left  & eplus;
-      bool epright  = right & eplus;
       bool emleft   = left  & eminus;
       bool emright  = right & eminus;
-      bool n0left   = left  & n0;
-      bool n0right  = right & n0;
-      bool nileft   = left  & ni;
-      bool niright  = left  & ni;
-
-      // Things that shouldn't happen: e+,e-,n0,ni are all tied up together only one set
-      // at a time.  We only expect to see one or the other in a basis.
-      if (((epleft | emleft) & (n0left | nileft)) |
-	  ((epright | emright) & (n0right | niright))) {
-	std::cout << "***** We have invalid basis here " << left << " * " << right << " = " << (*this);
-      }
-
-      //  e+ni, e-n0, e-e+ni etc needs to be simplified 
-      if ((epleft | emleft) && (n0right | niright)) {
-	std::cout << "***** Need to simplify conformal " << left << " * " << right << " = " << (*this);
-	_id |= SIMPLIFY_CONFORMAL;
-      }
-      if ((epright | emright) && (n0left | nileft)) {
-	std::cout << "***** Need to simplify conformal " << left << " * " << right << " = " << (*this);
-	_id |= SIMPLIFY_CONFORMAL;
-      }
 
       _id = swaps % 2 ? _id | SIGN_BIT : _id;  ///< sign is neg for odd swaps, pos otherwise;
 
       /// e-e- = -1
-      if (emleft && emright) {  
-	_id = _id & ~(_id & SIGN_BIT);
+      if (emleft && emright) {
+	_id |= SIGN_BIT & ~(_id & SIGN_BIT);
       }
-
-      // Dot n0.ni = -1 ni.n0 = -1
-      if (left_opt & dot) {   /// probably will never be used here
-	if (n0left && niright) {
-	  _id = _id & ~(_id & SIGN_BIT);
-	}
-	if (nileft && n0right) {
-	  _id = _id & ~(_id & SIGN_BIT);
-	}
-      } else {  // Wedge n0^ni = e-e+    ni^n0 = -e-e+
-	if ((n0left && niright) || (nileft && n0right)) {
-	  _id = _id & ~(n0 | ni);
-	  _id = _id | (eminus | eplus);
-	  if (nileft && n0right) {
-	    _id = _id & ~(_id & SIGN_BIT);
-	  }
-	}
-      }
-      
-      /// options:
+            /// options:
       _id = left_opt  & involution ? lgrade   % 2 ? _id ^ SIGN_BIT : _id : _id;
       _id = left_opt  & reversion  ? lgrade/2 % 2 ? _id ^ SIGN_BIT : _id : _id;
       _id = right_opt & involution ? rcount   % 2 ? _id ^ SIGN_BIT : _id : _id;
       _id = right_opt & reversion  ? rcount/2 % 2 ? _id ^ SIGN_BIT : _id : _id;
-
-      /// n0n0 = 0   nini = 0
-      if ((n0left && n0right) || (nileft && niright)) {
-	_id = 0;
-      }
    }
-   
 };
 
 /// some named bases -------------------------------
-///     this is the 1 element, both names are common
-const E<>    Scalar (-1);
-const E<>    One    (-1);
-///     these are some grade-1 bases names
 const E<>    e0     (0);
 const E<>    e1     (1);
 const E<>    e2     (2);
@@ -281,10 +221,8 @@ const E<>    e3     (3);
 const E<>    e4     (4);
 const E<>    e5     (5); 
 ///....
-const E<>    eminus (23);  // conformal coordinate e+
-const E<>    eplus  (24);  // conformal coordinate e- | e-e- = -1
-const E<>    n0     (25);  // zero element = (e- - e+)/2
-const E<>    ni     (26);  // infinity element = e- + e+
+const E<>    eminus (25);  // conformal coordinate e+
+const E<>    eplus  (26);  // conformal coordinate e- | e-e- = -1
 
 /// Despite auto-cast, this external method works, it resolves before the cast
 template< class BV_T >
@@ -334,13 +272,13 @@ public:
       const value_type &ve3 = 0) /// basis element e2 e.g. z
    {
       if( scalar )
-         _coefs[basis_type(-1)] = scalar;
+         _coefs[basis_type(0)] = scalar;
       if( ve1 )
-         _coefs[basis_type(0)] = ve1;
+         _coefs[basis_type(1)] = ve1;
       if( ve2 )
-         _coefs[basis_type(1)] = ve2;
+         _coefs[basis_type(2)] = ve2;
       if( ve3 )
-         _coefs[basis_type(2)] = ve3;
+         _coefs[basis_type(3)] = ve3;
    }
    
    /// Construct a 3D Geobj from coefficients and basis elements
@@ -349,17 +287,51 @@ public:
    {
       _coefs[ba] = va;
    }
-   
+   GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb )
+   {
+      _coefs[ba] = va;
+      _coefs[bb] = vb;
+   }
+   GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb,
+       const value_type &vc, const basis_type &bc )
+   {
+      _coefs[ba] = va;
+      _coefs[bb] = vb;
+      _coefs[bc] = vc;
+   }
+   GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb,
+       const value_type &vc, const basis_type &bc, const value_type &vd, const basis_type &bd )
+   {
+      _coefs[ba] = va;
+      _coefs[bb] = vb;
+      _coefs[bc] = vc;
+      _coefs[bd] = vd;
+   }
+
+
    /// copy constructor
    GO( const GO &go ) : _coefs( go._coefs ) {}
    
+   static GO n0() {  // n0 = e- + e+  "zero vector"
+     return GO(value_type(1), eminus, value_type(1), eplus);
+   }
+
+   static GO ni() {  // ni = e-/2 - e+/2  "infinity vector"
+     return GO(value_type(1) / value_type(2), eminus, -(value_type(1) / value_type(2)), eplus);
+   }
+
+   /// create a null (conformal) vector F(v) = v + n0 + v^2/2ni
+   static GO nullVector(value_type v1, value_type v2, value_type v3) {
+     const value_type vsquared_half = value_type((v1*v1 + v2*v2 + v3*v3)) / value_type(2); 
+     return GO(value_type(0), v1, v2, v3) + n0() + ni() * vsquared_half;
+   }
+
    /// assignment operator
    GO &operator=( const GO &go )
    {
       _coefs = go._coefs;
       return *this;
    }
-   
    
    //----------------------------------------------------------
    /// gutz::vec assignment
@@ -391,7 +363,7 @@ public:
             const basis_type pbase( (*lefti).first, (*righti).first );
             
             /// product of left-right elements, NOTE multiplied by base-product sign
-            const value_type pv =  value_type( pbase.getSign() ) * (*lefti).second * (*righti).second;
+            const value_type pv =  value_type( pbase.getSign() ) * ((*lefti).second * (*righti).second);
             
             /// ignore zeros, TODO: should consider an epsilon critera here? (hard to get floats back to zero!
             if( pv != value_type(0) && pv != value_type(-0) )  
@@ -419,8 +391,9 @@ public:
             --pi;
             prod._coefs.erase( del );
          }
-                     
       }
+      if (prod._coefs.empty())
+	prod._coefs[e0] = 0;
       return prod; 
    }
    
@@ -442,7 +415,7 @@ public:
    GO wedge( const GO &right ) const 
    {
       GO wgo = *this * right; ///< geometric product
-      EMapIter smi = wgo._coefs.find( basis_type(-1) ); ///< find scalar element
+      EMapIter smi = wgo._coefs.find( e0 ); ///< find scalar element
       if( smi != wgo._coefs.end() )  wgo._coefs.erase( smi ); ///< delete it
       return wgo;  ///< viola, wedge
    }
@@ -459,7 +432,7 @@ public:
    /// SIDE-EFFECT WEDGE, MAKE *THIS* Geobj a wedge (drop scalar part)
    GO &makeWedge()
    {
-      EMapIter smi = _coefs.find( basis_type(-1) );
+      EMapIter smi = _coefs.find( e0 );
       if( smi != _coefs.end() ) _coefs.erase(smi);
       return *this;
    }
@@ -469,7 +442,7 @@ public:
    value_type inner( const GO &right ) const
    {
       GO gp = *this * right;
-      EMapIter imi = gp._coefs.find( basis_type(-1) );
+      EMapIter imi = gp._coefs.find( e0 );
       if( imi != gp._coefs.end() ) return (*imi).second;
       return value_type(0);
    }
@@ -478,7 +451,7 @@ public:
    /// get the inner-part of THIS Geobj
    value_type getInner() const 
    {
-      EMapCIter imi = _coefs.find( basis_type(-1) );
+      EMapCIter imi = _coefs.find( e0 );
       if( imi != _coefs.end() ) return (*imi).second;
       return value_type(0);
    }
@@ -509,7 +482,7 @@ public:
      const ElementMap &rem = right._coefs;
      EMapCIter righti = rem.begin(), REnd = rem.end();
      EMapCIter lefti = _coefs.begin(), LEnd = _coefs.end();
-     while((righti != REnd) && (lefti != LEnd)) {
+     while((righti != REnd) || (lefti != LEnd)) {
        if ((righti != REnd) && (lefti != LEnd)) {
 	 if ((*righti).first < (*lefti).first) {
 	   sub._coefs[(*righti).first] = -(*righti).second;
@@ -530,10 +503,11 @@ public:
 	 ++righti;
        } else if (lefti != LEnd) {
 	 sub._coefs[(*lefti).first] = (*lefti).second;
+	 ++lefti;
        }
      }
      if (sub._coefs.empty())
-       sub._coefs[basis_type(-1)] = value_type(0);
+       sub._coefs[ e0 ] = value_type(0);
      return sub;
    }
 
@@ -544,7 +518,7 @@ public:
      const ElementMap &rem = right._coefs;
      EMapCIter righti = rem.begin(), REnd = rem.end();
      EMapCIter lefti = _coefs.begin(), LEnd = _coefs.end();
-     while((righti != REnd) && (lefti != LEnd)) {
+     while((righti != REnd) || (lefti != LEnd)) {
        if ((righti != REnd) && (lefti != LEnd)) {
 	 if ((*righti).first < (*lefti).first) {
 	   add._coefs[(*righti).first] = (*righti).second;
@@ -565,10 +539,13 @@ public:
 	 ++righti;
        } else if (lefti != LEnd) {
 	 add._coefs[(*lefti).first] = (*lefti).second;
+	 ++lefti;
+       } else {
+	 std::cout << "wtf";
        }
      }
      if (add._coefs.empty())
-       add._coefs[basis_type(-1)] = value_type(0);
+       add._coefs[e0] = value_type(0);
      return add;
    }
    
@@ -598,6 +575,7 @@ public:
          
          os << (*emi).first;
       }
+      if (_coefs.empty()) os << "0";
       return os;
    }
       

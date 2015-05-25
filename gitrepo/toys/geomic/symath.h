@@ -23,7 +23,7 @@ namespace Symath {
    
    const std::string WTF("??");
    const std::string ONE("1");
-   const std::string ONE_("");
+   const std::string ONE_("1");
    const std::string NEG_ONE("-1");
    const std::string ZERO("0");
    const std::string NEG_ZERO("-0");
@@ -97,7 +97,7 @@ namespace Symath {
             setValue(ONE_);
          else if( getValue() == NEG_ONE )
          {
-            setValue(NEG);
+            setValue(NEG_ONE);
          }
          
       }
@@ -270,11 +270,11 @@ namespace Symath {
             return Sym(ZERO);
          
          /// -1
-         if( getValue() == ONE || getValue() == ONE_ )
+         if( isEmpty(getValue()) || getValue() == ONE || getValue() == ONE_ )
          {
-            return Sym( NEG , 
-                           NEG
-                          );
+            return Sym( NEG + ONE , 
+			NEG,
+			new Sym(ONE));
          }
          
          /// --A -> A
@@ -293,24 +293,34 @@ namespace Symath {
          /// new node - , A
          return Sym( NEG + getValue(),
                      NEG,
-                     this->clone() 
+                     new Sym(ONE) 
                    );
       }
       
+      bool isEmpty(const std::string& val) const {
+	return val.empty();
+      }
+      bool isEmpty(double val) const {
+        return false;
+      }
+
       //-----------------------------------------------------------------------------
       /// this * s  MUL
       Sym operator*( const Sym &s ) const   ///< MULTIPLICATION
       {  
-         
          base_type l = getValue();
          base_type r = s.getValue();
          
+         if ((isEmpty(l) || l == ONE_ || l == ONE) && (isEmpty(r) || r == ONE || r == ONE_)) {
+	   return Sym(ONE);
+	 }
+	 
          if( l == ZERO || l == NEG_ZERO || r == ZERO || r == NEG_ZERO )
          {
             return Sym(ZERO);
          }   
          
-         if( (l == NEG) && (_left == 0)  && (r!=ONE_) && (r!=ONE) && (s._op != NEG) )  /// fresh neg
+         if( (l == NEG) && (_left == 0)  && !isEmpty(r) && (r != ONE_) && (r != ONE) && (s._op != NEG) )  /// fresh neg
          {
             
             return Sym( getValue() + r, 
@@ -319,13 +329,12 @@ namespace Symath {
                           );
          }
          
-         
-         if( l == ONE_ || l == ONE )
+         if( isEmpty(l) || l == ONE_ || l == ONE )
          {
             return s;
          }
          
-         if( r == ONE_ || r == ONE ) 
+         if( isEmpty(r) || r == ONE_ || r == ONE ) 
          {
             return Sym(*this);
          }
@@ -336,14 +345,14 @@ namespace Symath {
          {
             l = l.substr(1);
             r = r.substr(1);
-            if( l == ONE || l == ONE_ ) 
+            if( isEmpty(l) || l == ONE || l == ONE_ ) 
             {
                if( s._left )  // maybe there was a fresh neg to your right???
                   return Sym(*(s._left));
                std::cout << " wtf?  " << getValue() << " * " << s.getValue() << std::endl;
                return Sym( ONE_ );
             }
-            if( r == ONE || r == ONE_ )
+            if( isEmpty(r) || r == ONE || r == ONE_ )
             {
                if( _left )
                {
@@ -378,7 +387,12 @@ namespace Symath {
          
          if( _op == NEG ) // left side is negative
          {
-            
+	   if( (l.substr(1) == ONE || l.substr(1) == ONE_ || isEmpty(l.substr(1))) && (r == ONE || r == ONE_ || isEmpty(r))) {
+	     return Sym( NEG + ONE,
+			 NEG,
+			 new Sym(ONE));
+	   }
+
             if( l.substr(1) > r )
             {
                return Sym( NEG + r + TIMES + l.substr(1), 
@@ -390,6 +404,11 @@ namespace Symath {
 					  )
 			   );
             }
+	    else if ( r == ONE || r == ONE_ || isEmpty(r)) {
+	      return Sym( NEG + ONE,
+			  NEG,
+			  new Sym(ONE));
+	    }
             //else this is already a neg node, replace left and your done
 	    SymSP left = _left->clone();
 	    SymSP right = s.clone();
@@ -407,6 +426,9 @@ namespace Symath {
          }
          if( s._op == NEG && s._left )  //right hand side is negative
          {
+	   if( (r.substr(1) == ONE || r.substr(1) == ONE_ || isEmpty(r.substr(1))) && (l == ONE || l == ONE_ || isEmpty(l))) {
+	       return Sym( NEG + ONE, NEG, new Sym(ONE));
+	     }
             if( r.substr(1) < l )
                return Sym( r + "*" + l,
                              NEG, 
@@ -867,7 +889,10 @@ namespace Symath {
          /// negavie node, I want negs printed in-line  -*  or - A * B
          if( _op == NEG )
          {
-            if( ! _left ) return;
+	   if( ! _left ) {
+	     std::cout << "wtf" ;
+	     return;
+	   }
             Sym *sym = _left;
             
             /// double NEG??  This should NOT happen if tree was built properly!
