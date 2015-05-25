@@ -383,14 +383,15 @@ public:
       /// additional pass to get rid of "0" valued elements
       /// NOTE: we are not using the early END capture in this case since we expect the size of the
       ///   map that we are iterating over to change ( which may change the value of end() )
-      for( EMapIter pi = prod._coefs.begin(); pi != prod._coefs.end(); ++pi )
+      EMapIter pi = prod._coefs.begin(), END = prod._coefs.end();
+      while (pi != END)
       {
          if( (*pi).second == value_type(0) || (*pi).second == value_type(-0) )
          {
-            EMapIter del = pi;
-            --pi;
-            prod._coefs.erase( del );
-         }
+            prod._coefs.erase( pi++ );
+         } else {
+	   ++pi;
+	 }
       }
       if (prod._coefs.empty())
 	prod._coefs[e0] = 0;

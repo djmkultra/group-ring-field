@@ -18,7 +18,9 @@ int main( int argc, char **argv )
    std::cout << E0 << " * " << E0 << " = " << E0 * E0 << std::endl;
    GOsym E1 = GOsym(S("1"),e1);
    std::cout << E1 << " * " << E1 << " = " << E1 * E1 << std::endl;
-   
+   std::cout << " n0ni " << GOf::n0() * GOf::ni() << std::endl;
+   std::cout << " n0n0 " << GOf::n0() * GOf::n0() << std::endl;
+   std::cout << " nini " << GOf::ni() * GOf::ni() << std::endl;
 
    GOf W = GOf::nullVector(1, 2, 3);
    std::cout << " W homogenious = " << W << std::endl;
