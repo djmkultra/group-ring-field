@@ -482,11 +482,13 @@ template<class T, class B=E<4,1> >
        if ( (*pi).second == value_type(0) || (*pi).second == value_type(-0) )
          {
 	   prod._coefs.erase( pi++ );
-         } else {
-	 ++pi;
-       }
+         } 
+       else 
+	 {
+	   ++pi;
+	 }
      }
-
+   
    /// make sure we have at least one element, even if it is zero.
    if (prod._coefs.empty())
      prod._coefs[e0] = 0;
