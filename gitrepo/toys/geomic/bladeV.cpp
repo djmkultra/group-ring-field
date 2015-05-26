@@ -60,6 +60,7 @@ int main( int argc, char **argv )
   std::cout << " Ni.Ws = " << inner(Ni,Ws) << std::endl << std::endl;
 
   GOf aaa = GOf::conformal(2,2,2);
+  std::cout << " conformal geometry doesn't invert " << std::endl;
   std::cout << " aaa " << aaa << " inv " << aaa.inverse() << "  *  " << aaa * aaa.inverse() << std::endl;
   std::cout << " aaa.rev " << aaa.reverse() << std::endl << std::endl;
 
@@ -67,13 +68,13 @@ int main( int argc, char **argv )
 
   GOf Pa = GOf(1,e2) + GOf::ni() * 1;
   GOf Pb = GOf(1,e2) + GOf::ni() * .5;
-  std::cout << " pa " << Pa << " pb " << Pb << "  sammich " << Pa * Pb * W * Pb * Pa << std::endl;
-  std::cout << " pa pb " << Pa * Pb << "  sammich " << Pa * (Pb * W) * Pb * Pa << std::endl;
-  std::cout << " pb pa " << Pb * Pa << "  sammich " << Pa * (Pb * W * Pb) * Pa << std::endl;
-  std::cout << " W pb " << W * Pb << "  sammich " << (Pa * Pb) * W * (Pb * Pa) << std::endl;
+  std::cout << " pa =" << Pa << " pb=" << Pb << "  sammich " << Pa * Pb * W * Pb * Pa << std::endl;
+  std::cout << " pa pb " << Pa * Pb << "      sammich " << Pa * (Pb * W) * Pb * Pa << std::endl;
+  std::cout << " pb pa " << Pb * Pa << "      sammich " << Pa * (Pb * W * Pb) * Pa << std::endl;
+  std::cout << " W pb " << W * Pb << "      sammich " << (Pa * Pb) * W * (Pb * Pa) << std::endl;
   GOf PaPb = Pa * Pb;
   GOf PbPa = Pb * Pa;
-    std::cout << " PaPb " << PaPb << "  sammmmich " << PaPb * W * PbPa << std::endl;
+  std::cout << " PaPb " << PaPb << "  sammmmich " << PaPb * W * PbPa << std::endl;
 
   GOsym Tr = GOsym::translateVersor(As);
   std::cout << " Tr(A) = " << Tr << "  Tr(A)^(-1) = " << Tr.inverse() << std::endl; 
@@ -81,21 +82,18 @@ int main( int argc, char **argv )
   GOf T = GOf::translateVersor(Ef1);
   std::cout << " W          " << W << std::endl;
   std::cout << " T(A) =     " << T << std::endl;
-  std::cout << " T(A)W =    " << T * W << std::endl;
-  std::cout << " WT(A)^-1 = " << W * T.inverse() << std::endl;
   std::cout << "  T(A)^(-1) = " << T.inverse() << std::endl;
   std::cout << "  T(A)^(-1) = " << GOf::invTranslateVersor(Ef1) << std::endl;
-  std::cout << " T(A).T(A) = " << inner(T,T) << " T * T " << T * T << "   " << T.inverse() * T.inverse() <<std::endl;
+  std::cout << " T(A).T(A) = " << inner(T,T) << "      T * T = " << T * T << "   " << T.inverse() * T.inverse() <<std::endl;
   std::cout << " T(A)T(A)^(-1) = " << T * (T.inverse()) << std::endl;
   std::cout << " T(A)^(-1)T(A) = " << (T.inverse()) * T << std::endl;
   std::cout << " T(A)T(A)^(-1) = " << T * GOf::invTranslateVersor(Ef1) << std::endl;
   std::cout << " T(A)WT(A)~ = " << T * W * T.inverse() << std::endl;
   std::cout << " T(A)WT(A)~ = " << T * W * T.reverse() << std::endl;
-  std::cout << " T(A)wT(A)~ = " << T * GOf::extract(W) * T.inverse() << std::endl;
+  std::cout << " T(A)wT(A)~ = " << T * GOf::extract(W) * T.inverse() << "  no work with native " << GOf::extract(W) << std::endl;
   std::cout << " T(A)~WT(A) = " << T.inverse() * W * T << std::endl;
-  std::cout << "    = " << GOf::extract(T * W * T.inverse()) << std::endl;
-  std::cout << " T(A)INV(T(A)) = " << T * GOf::invTranslateVersor(W) << std::endl;
-  std::cout << " expecting " << GOf::conformal(2,4,6) << std::endl;
+  std::cout << "    = " << GOf::extract(T * W * T.inverse()) << "  native extract " << std::endl;
+  std::cout << " expecting " << GOf::extract(W) + Ef1 << std::endl;
 
   std::cout << std::endl << std::endl;
   std::cout << " A  = " << A << std::endl;

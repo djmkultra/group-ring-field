@@ -315,14 +315,13 @@ template<class T, class B=E<4,1> >
  //----------------------------------------------------------
  /// Constructors
  //----------------------------------------------------------
- GO() : _props(0) {}
+ GO() {}
    
  /// Construct a 3D Geobj vector, 
  GO(const value_type &scalar,  /// basis element "1" (scalar part)
     const value_type &ve1 = 0, /// basis element e0 e.g. x  
     const value_type &ve2 = 0, /// basis element e1 e.g. y
     const value_type &ve3 = 0) /// basis element e2 e.g. z
- : _props(0)
  {
    if ( scalar )
      _coefs[basis_type(0)] = scalar;
@@ -337,19 +336,16 @@ template<class T, class B=E<4,1> >
  /// Construct a 3D Geobj from coefficients and basis elements
  /// one coefficient (great for making psuedoScalars n stuff)
  GO( const value_type &va, const basis_type &ba )
- : _props(0)
  {
    _coefs[ba] = va;
  }
  GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb )
- : _props(0)
  {
    _coefs[ba] = va;
    _coefs[bb] = vb;
  }
  GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb,
      const value_type &vc, const basis_type &bc )
- : _props(0)
  {
    _coefs[ba] = va;
    _coefs[bb] = vb;
@@ -357,7 +353,6 @@ template<class T, class B=E<4,1> >
  }
  GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb,
      const value_type &vc, const basis_type &bc, const value_type &vd, const basis_type &bd )
- : _props(0)
  {
    _coefs[ba] = va;
    _coefs[bb] = vb;
@@ -366,7 +361,7 @@ template<class T, class B=E<4,1> >
  }
 
  /// copy constructor
- GO( const GO& go ) : _coefs( go._coefs ), _props( go._props ) {}
+ GO( const GO& go ) : _coefs( go._coefs ) {}
    
  static GO n0() {  // n0 = e- + e+  "zero vector"
    return GO(value_type(1), eminus, value_type(1), eplus);
@@ -376,36 +371,16 @@ template<class T, class B=E<4,1> >
    return GO(value_type(1) / value_type(2), eminus, -(value_type(1) / value_type(2)), eplus);
  }
 
- /// create a null (conformal) vector F(v) = v + n0 + v^2/2ni
+ /// create a null / conformal vector F(v) = v + n0 + v^2*ni/2
  static GO conformal(value_type v1, value_type v2, value_type v3) 
  {
    const value_type vsquared_half = value_type((v1*v1 + v2*v2 + v3*v3)) / value_type(2); 
    return GO(value_type(0), v1, v2, v3) + n0() + ni() * vsquared_half;
  }
-
- /// conformal tranlation versor: e^(na/2) = 1+na/2+(na/2)^2/2!+... = 1+na/2 | (na)(na)=0
- static GO translateVersor(const GO& a) 
- {
-   const value_type mag = a.inner(a);
-   const value_type half_mag = mag / value_type(2);
-   GO P(a * (value_type(1) / mag));  // normalized
-   std::cout << " P  " << P << " --  " << P + half_mag * ni() << " --  " << (P + half_mag * ni()) * (P + mag * ni()) << std::endl;
-   return (P + half_mag * ni()) * (P + mag * ni());
-   return GO(value_type(1), e0) + ni()*a*(value_type(1)/value_type(2));
- }
- static GO invTranslateVersor(const GO& a)
- {
-   const value_type mag = a.inner(a);
-   const value_type half_mag = mag / value_type(2);
-   GO P(a * (value_type(1) / mag));  // normalized
-   return (P + mag * ni()) * (P + half_mag * ni());
-   return GO(value_type(1), e0) - ni()*a*(value_type(1)/value_type(2));
- }
-
  /// extract the native vector from its conformal nullVector
  static GO extract(const GO& c) 
  {
-   /// first normalize by -conformal.ni to get us on the null cone.
+   /// first normalize by 1/(-conformal.ni) to get us on the null cone.
    GO result = c * (value_type(1) / (-(c.inner(ni()))));
    /// drop the homogenious components..
    EMapCIter n0i = result._coefs.find(eminus);
@@ -415,17 +390,38 @@ template<class T, class B=E<4,1> >
    return result;
  }
 
+ /// conformal tranlation versor: 
+ ///   V = e^(ni*a/2) = 1 + ni*a/2 + (ni*a/2)^2/2! +... = 1+ni*a/2 since (na)(na)=0
+ /// alternatively using parallel planes, but that's more expensive setup...
+ ///   Translation vector a, V = (a/|a| + |a|/2 * ni) * (a/|a| + |a| * ni) 
+ static GO translateVersor(const GO& a) 
+ {
+   /// Rotor solution
+   return GO(value_type(1), e0) + ni()*a*(value_type(1)/value_type(2));
+   /// Pair of planes solution
+   const value_type mag = a.inner(a);
+   const value_type half_mag = mag / value_type(2);
+   GO P(a * (value_type(1) / mag));  // normalized
+   return (P + half_mag * ni()) * (P + mag * ni());
+ }
+ /// inverse conformal translation versor, you can also just invert V
+ static GO invTranslateVersor(const GO& a)
+ {
+   /// Rotor solution
+   return GO(value_type(1), e0) - ni()*a*(value_type(1)/value_type(2));
+   /// Pair of planes solution
+   const value_type mag = a.inner(a);
+   const value_type half_mag = mag / value_type(2);
+   GO P(a * (-value_type(1) / mag));  // normalized and negated.
+   return (P + half_mag * ni()) * (P + mag * ni());
+ }
+
  /// assignment operator
  GO &operator=( const GO& go )
  {
    _coefs = go._coefs;
-   _props = go._props;
    return *this;
  }
-
- /// Get/Set the properties for this object.
- unsigned int getProperties() const { return _props; }
- void setProperties(unsigned int props) { _props = props; }
 
  //-------------------------------------------------------
  // Product selectors
@@ -760,7 +756,6 @@ template<class T, class B=E<4,1> >
  //------------------------------------------------------------
  /// the ELEMENT MAP key=Basis value=coefficients
  ElementMap _coefs;  
- unsigned int _props;
 };
 
 /// left scalar product  s * A
