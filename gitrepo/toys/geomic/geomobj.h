@@ -11,14 +11,21 @@
 //-----------------------------------------------------------------
 //-----------------------------------------------------------------
 //
-/// Basis Element, uses a bit vector for k-blade bases
-///  e0 represents scalars
-///  a basis element also preserves the sign-change as a result
-///      of swapping to achieve a standard representation.
+/// Basis Element, uses a bit vector for k-blade bases / Clifford Algebra
+///  e0 represents scalars and is never printed out, bitvector = 0x0
+///  e1,e2,...eN basis elements (bitvector e1 = 0x1, e2 = 0x2, e3 = 0x4 ...)
+///  e1e2 = -e2e1 anti-communitive
+///  <e1,e2> = 0  orthogonal 
+///  <e1,e1> = |e1|^2 = +/-1 unitary
+///  a basis element preserves the sign-change as a result
+///    of swapping to achieve a standard representation: e1e2e3...
 //
-/// Template Parameter BV_T: Type of bit-vector 
+/// Template Parameters:
+/// int REAL_DIM number of positive-unitary basis elements
+/// int IMAGINARY_DIM number of negative-unitary elements <eI,eI> = -1 
+/// BV_T: Type of bit-vector defaults to integer 
 //
-///  integers offer 31 basis elements  long long integers 63
+/// NOTE: integers offer max 31 basis elements  long long integers 63
 ///  if more are required, std::vector<bool> is speciallized
 ///    as a bit-vector, use if ever we go beyond 63 dimensions 
 ///  we are using the sign-bit to handle negation due to ordering
@@ -33,13 +40,13 @@ class E {
  //
  /// using signed data type here: sign bit is used to track sign changes
  //
- typedef int bit_vector;   ///< int = max 32dim, long long int max 63dim..
+ typedef int bit_vector;
  typedef bit_vector value_type;
- const static int max_dim = std::numeric_limits<bit_vector>::digits;
+ const static int max_dim = std::numeric_limits<bit_vector>::digits - 1;
  const static int real_dim = REAL_DIM;
  const static int imaginary_dim = IMAGINARY_DIM;
- // Element count includes scalar element e0.
- const static int element_count = REAL_DIM + IMAGINARY_DIM + 1;
+ // Does not count scalar element e0 
+ const static int element_count = REAL_DIM + IMAGINARY_DIM;
 
  //
  //-----------------------------------------------------------------
@@ -71,7 +78,7 @@ class E {
    PRODUCT_OPTION_LAST
  };
    
- /// Product constructor  
+ /// Product constructor = el * er
  //
  E( const E& el, const E& er, int e1_opt=standard, int e2_opt=standard )
  :_id(0)
@@ -79,6 +86,11 @@ class E {
    setProduct(el,er,e1_opt,e2_opt);
  }
    
+ /// Returns real basis elements 1..REAL_DIM
+ static E real(int element_id) { return E(element_id); }
+ /// Returns imaginary basis elements 1..IMAGINARY_DIM
+ static E imaginary(int element_id) { return E(element_id + REAL_DIM); }
+
  /// assignment operator
  //
  E &operator=(const E &e) { _id = e._id; return *this; }
@@ -91,16 +103,14 @@ class E {
  /// just handy numbers may not be meaningfull for anything but E<4,1>
  //
  enum {
-   /// for external reference:
-   FIRST_ELEM_ID  = 0,    /// index of first "proper" basis element (1, scalar)
    SCALAR_ID      = 0,    /// construct with this ID for scalar element
-   e0             = 0, /// scalar basis function, element id "e0" generally not printed out. 
-   e1             = 1<<0,
+   e0             = 0,    /// scalar element id "e0" - generally not printed out. 
+   e1             = 1<<0, /// first ortho/unitary basis element
    e2             = 1<<1,
    e3             = 1<<2,
    e4             = 1<<3,  /// e4 and eplus are the same in "conformal coordinates E<4,1>"
-   eplus          = 1<<3,  /// positive conformal coordinate e+e+ = +1
-   eminus         = 1<<(REAL_DIM),  /// negative conformal coordinate e-e- = -1
+   eplus          = 1<<3,  /// common name for positive conformal coordinate e+e+ = +1
+   eminus         = 1<<(REAL_DIM),  /// first negative-norm / imaginary basis element.
    LAST_ELEM_ID   = REAL_DIM + IMAGINARY_DIM,    
       
    /// used internally:
@@ -126,24 +136,38 @@ class E {
    return E( bv, true );
  }
 
+ /// Compute the sign of a grade-dim reversal e1e2 = -e2e1, e1 = e1 etc...
+ /// sign(~X_dim) = (-1)^(k(k-1)/2) | k = dim % 4 
+ static int reversalSign(int dim)
+ {
+   const int k = dim % 4;
+   return (dim * (dim - 1) / 2) % 2 ? -1 : 1;
+ }
+
  //-----------------------------------------------------------------
  //
  /// get the sign change if any
  //
  int getSign() const { return _id & SIGN_BIT ? -1 : 1; }
-   
+
  //-----------------------------------------------------------------
  //
  // GRADE, how many basis elements are involved? dimension of basis element, if you like
  // 0 -> scalar,  1 -> vector,  2 -> 2Blade, 3 -> VolumeBlade,  4 -> HyperBlade??
  //
+ // TODO(djmk): kinda expensive to do this all the time, maybe cache bit count.
  int grade() const
  {
    /// TODO: need elegant way to count the number of 1's in a bit-vector
+   /// this is probably best for a small number of bits to check.
    int count = 0;
    for (int i = 0; i < LAST_ELEM_ID; ++i) 
      count += _id & (1<<i) ? 1 : 0;
    return count;
+   /// For more bits, this may be faster: SWAR algorithm.
+   // int i = _id - ((_id >> 1) & 0x55555555);
+   // i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
+   // return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
  }
    
  //-----------------------------------------------------------------
@@ -155,11 +179,10 @@ class E {
    
  //-----------------------------------------------------------------
  //
- /// NOTE: because of auto-cast, this has no effect
+ /// Print, because of auto-cast, this must be called from external << op.
  //
  std::ostream &operator<<(std::ostream &os) const
  {
-   //if ( _id & SIGN_BIT ) os << "-";
    for (int i = 0; i < LAST_ELEM_ID; ++i) {
      int bit = _id & 1<<i;
      if (bit) 
@@ -182,16 +205,18 @@ class E {
  protected:
  bit_vector _id;
    
- /// TODO: this isn't right yet
+ /// TODO: this isn't right yet, but it's right-ish
  /// set product: because we represent all k-bases the same way
  ///  a product may induce a sign change,
  /// sets this instance to the product and sets the sign-bit if negative.
  void setProduct( const E &left, const E &right, int left_opt, int right_opt )
  {
+   _id = 0x0;
+
    const int lgrade = left.grade();
       
    int lcount = 0; ///< how many elements of left basis have been seen already
-   int rcount = 0;
+   int rcount = 0; ///< will sum to the right grade
    int swaps  = 0; ///< swaps required to sort assending product, tracks sign changes.
       
    /// TODO: there must be a faster/more efficient way than checking every bit 
@@ -199,31 +224,45 @@ class E {
      { 
        /// count number of basis swaps required to sort
        lcount += left  & 1<<i ? 1 : 0;
-       swaps  += right & 1<<i ? lgrade - lcount + rcount : 0;
+       swaps  += right & 1<<i ? lgrade - lcount : 0;
        rcount += right & 1<<i ? 1 : 0;
      } 
 
-   /// after cancellation of identical basis elements we have xor!
+   /// cancellation of identical basis elements is xor!
    _id = left ^ right;
 
-   // handle imaginary elements eiei = -1
-   for (int i = REAL_DIM; i < LAST_ELEM_ID; ++i) {
-     if ((left & 1<<i) && (right & 1<<i)) 
-       ++swaps;  // swaps tracks negations
-   }
+   /// handle imaginary elements eiei = -1
+   for (int i = REAL_DIM; i < LAST_ELEM_ID; ++i) 
+     {
+       // swaps tracks negations
+       swaps += ((left & 1<<i) && (right & 1<<i)) ? 1 : 0; 
+     }
 
-   _id = swaps % 2 ? _id | SIGN_BIT : _id;  ///< sign is neg for odd swaps, pos otherwise;
+   /// options: I did this so long ago, I am not sure if it's correct.
+   /// NOT TESTED
+   /// involution sign = (-1)^k 
+   /// reversion sign = (-1)^(k(k-1)/2)   | k = k % 4
+   /// conjugation sign = (-1)^(k(k+1)/2) | k = k % 4
+   swaps += left_opt  & involution ? lgrade   % 2 ? 1 : 0 : 0;
+   swaps += left_opt  & reversion  ? lgrade/2 % 2 ? 1 : 0 : 0;
+   swaps += right_opt & involution ? rcount   % 2 ? 1 : 0 : 0;
+   swaps += right_opt & reversion  ? rcount/2 % 2 ? 1 : 0 : 0;
 
-   /// options:
-   _id = left_opt  & involution ? lgrade   % 2 ? _id ^ SIGN_BIT : _id : _id;
-   _id = left_opt  & reversion  ? lgrade/2 % 2 ? _id ^ SIGN_BIT : _id : _id;
-   _id = right_opt & involution ? rcount   % 2 ? _id ^ SIGN_BIT : _id : _id;
-   _id = right_opt & reversion  ? rcount/2 % 2 ? _id ^ SIGN_BIT : _id : _id;
+   ///< sign is neg for odd swaps, pos otherwise;
+   _id = swaps % 2 ? _id | SIGN_BIT : _id;  
  }
 };
 
+/// Despite auto-cast, this external operator<< works, it resolves before the cast
+template<int R, int I, class BV_T >
+  std::ostream &operator<<( std::ostream &os, const E<R,I,BV_T> &e )
+{
+  return e.operator<<(os);
+}
+
 /// some named bases -------------------------------
-const E<>    e0     (E<>::e0, true);
+/// probably not good to keep these around long-term.
+const E<>    e0     (E<>::e0, true);  // scalar element, dimensionless
 const E<>    e1     (E<>::e1, true);
 const E<>    e2     (E<>::e2, true);
 const E<>    e3     (E<>::e3, true);
@@ -232,17 +271,10 @@ const E<>    e4     (E<>::e4, true);
 const E<>    eminus (E<>::eminus, true); // conformal coordinate e- | e-e- = -1
 const E<>    eplus  (E<>::eplus, true);  // conformal coordinate e+
 
-/// Despite auto-cast, this external method works, it resolves before the cast
-template<int R, int I, class BV_T >
-  std::ostream &operator<<( std::ostream &os, const E<R,I,BV_T> &e )
-{
-  return e.operator<<(os);
-}
-
 //-----------------------------------------------------------------
 //-----------------------------------------------------------------
 //
-/// Geometric Object T=Value B=Basis which defaults to class E<4,1>
+/// Geometric Object T=Value B=Basis (which defaults to E<4,1>)
 ///  This approach uses a map from basis-element to value
 ///  Basis-elements compute sign changes as part of their product op
 ///  The map allows us to collect like terms trivially, by simply 
@@ -267,17 +299,30 @@ template<class T, class B=E<4,1> >
  typedef typename ElementMap::iterator                  EMapIter;
  typedef typename ElementMap::const_iterator            EMapCIter;
  //----------------------------------------------------------
+
+ //----------------------------------------------------------
+ /// Handy to remember things about GOs 
+ /// TODO(djmk) remove, not used, nor should it be....
+ enum Properties {
+   UNIT   = 1<<0,                  // unit magnitude
+   CONFORMAL = 1<<1,               // null-vector mag = 0 
+   VERSOR = 1<<2,                  // apply operator VxV^(-1)
+   ROTOR  = 1<<3 | UNIT | VERSOR,  // apply operator Vx~V 
+   TRANSLATE = 1<<4 | ROTOR,       // does translation
+   ROTATION = 1<<5 | ROTOR         // does rotation
+ };
    
  //----------------------------------------------------------
  /// Constructors
  //----------------------------------------------------------
- GO() {}
+ GO() : _props(0) {}
    
- /// Construct a 3D Geobj, 
+ /// Construct a 3D Geobj vector, 
  GO(const value_type &scalar,  /// basis element "1" (scalar part)
     const value_type &ve1 = 0, /// basis element e0 e.g. x  
     const value_type &ve2 = 0, /// basis element e1 e.g. y
     const value_type &ve3 = 0) /// basis element e2 e.g. z
+ : _props(0)
  {
    if ( scalar )
      _coefs[basis_type(0)] = scalar;
@@ -290,18 +335,21 @@ template<class T, class B=E<4,1> >
  }
    
  /// Construct a 3D Geobj from coefficients and basis elements
- /// one coefficient (great for making psuedoScalars n stuff
+ /// one coefficient (great for making psuedoScalars n stuff)
  GO( const value_type &va, const basis_type &ba )
+ : _props(0)
  {
    _coefs[ba] = va;
  }
  GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb )
+ : _props(0)
  {
    _coefs[ba] = va;
    _coefs[bb] = vb;
  }
  GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb,
      const value_type &vc, const basis_type &bc )
+ : _props(0)
  {
    _coefs[ba] = va;
    _coefs[bb] = vb;
@@ -309,6 +357,7 @@ template<class T, class B=E<4,1> >
  }
  GO( const value_type &va, const basis_type &ba, const value_type &vb, const basis_type &bb,
      const value_type &vc, const basis_type &bc, const value_type &vd, const basis_type &bd )
+ : _props(0)
  {
    _coefs[ba] = va;
    _coefs[bb] = vb;
@@ -316,9 +365,8 @@ template<class T, class B=E<4,1> >
    _coefs[bd] = vd;
  }
 
-
  /// copy constructor
- GO( const GO &go ) : _coefs( go._coefs ) {}
+ GO( const GO& go ) : _coefs( go._coefs ), _props( go._props ) {}
    
  static GO n0() {  // n0 = e- + e+  "zero vector"
    return GO(value_type(1), eminus, value_type(1), eplus);
@@ -329,29 +377,55 @@ template<class T, class B=E<4,1> >
  }
 
  /// create a null (conformal) vector F(v) = v + n0 + v^2/2ni
- static GO nullVector(value_type v1, value_type v2, value_type v3) {
+ static GO conformal(value_type v1, value_type v2, value_type v3) 
+ {
    const value_type vsquared_half = value_type((v1*v1 + v2*v2 + v3*v3)) / value_type(2); 
    return GO(value_type(0), v1, v2, v3) + n0() + ni() * vsquared_half;
  }
 
+ /// conformal tranlation versor: e^(na/2) = 1+na/2+(na/2)^2/2!+... = 1+na/2 | (na)(na)=0
+ static GO translateVersor(const GO& a) 
+ {
+   const value_type mag = a.inner(a);
+   const value_type half_mag = mag / value_type(2);
+   GO P(a * (value_type(1) / mag));  // normalized
+   std::cout << " P  " << P << " --  " << P + half_mag * ni() << " --  " << (P + half_mag * ni()) * (P + mag * ni()) << std::endl;
+   return (P + half_mag * ni()) * (P + mag * ni());
+   return GO(value_type(1), e0) + ni()*a*(value_type(1)/value_type(2));
+ }
+ static GO invTranslateVersor(const GO& a)
+ {
+   const value_type mag = a.inner(a);
+   const value_type half_mag = mag / value_type(2);
+   GO P(a * (value_type(1) / mag));  // normalized
+   return (P + mag * ni()) * (P + half_mag * ni());
+   return GO(value_type(1), e0) - ni()*a*(value_type(1)/value_type(2));
+ }
+
+ /// extract the native vector from its conformal nullVector
+ static GO extract(const GO& c) 
+ {
+   /// first normalize by -conformal.ni to get us on the null cone.
+   GO result = c * (value_type(1) / (-(c.inner(ni()))));
+   /// drop the homogenious components..
+   EMapCIter n0i = result._coefs.find(eminus);
+   if (n0i != result._coefs.end()) result._coefs.erase(n0i);
+   EMapCIter nii = result._coefs.find(eplus);
+   if (nii != result._coefs.end()) result._coefs.erase(nii);
+   return result;
+ }
+
  /// assignment operator
- GO &operator=( const GO &go )
+ GO &operator=( const GO& go )
  {
    _coefs = go._coefs;
+   _props = go._props;
    return *this;
  }
-   
- //----------------------------------------------------------
- /// gutz::vec assignment
- /// put a gutz::vec up in there
- ///  ex.  A.assign<> ( vec3f( 1.0, 2.1, 3.2) );
- template< class VT, int D >
- GO &assign( const gutz::vec<VT,D> &v )
- {
-   for (int i=0; i<D; ++i)
-     if ( v[i] )
-       _coefs[basis_type(i)] = v[i];
- }
+
+ /// Get/Set the properties for this object.
+ unsigned int getProperties() const { return _props; }
+ void setProperties(unsigned int props) { _props = props; }
 
  //-------------------------------------------------------
  // Product selectors
@@ -450,7 +524,7 @@ template<class T, class B=E<4,1> >
  GO operator*( const value_type &vt ) const 
  {
    GO prod;
-   for ( EMapCIter lefti = _coefs.begin(); lefti != _coefs.end(); ++lefti )
+   for ( EMapCIter lefti = _coefs.begin(), END = _coefs.end(); lefti != END; ++lefti )
      {
        prod._coefs[ (*lefti).first ] = (*lefti).second * vt;
      }
@@ -463,10 +537,6 @@ template<class T, class B=E<4,1> >
  GO wedge( const GO &right ) const 
  {
    return product<WEDGE>(*this, right);
-   GO wgo = *this * right; ///< geometric product
-   EMapIter smi = wgo._coefs.find( e0 ); ///< find scalar element
-   if ( smi != wgo._coefs.end() )  wgo._coefs.erase( smi ); ///< delete it
-   return wgo;  ///< viola, wedge
  }
       
  //----------------------------------------------------------
@@ -515,55 +585,89 @@ template<class T, class B=E<4,1> >
  }
    
  //----------------------------------------------------------
- /// INVERSE of this Geobj
+ /// INVERSE = X^(-1) = X~/(X.X~) 
  GO inverse() const 
  {
-   value_type sqr_mag = (*this).inner(*this);
-   return (*this) * (value_type(1)/sqr_mag);
+   GO rev((*this).reverse());
+   const value_type sqr_mag = (*this).inner(rev);
+   return rev * (value_type(1)/sqr_mag);
  }
    
  //----------------------------------------------------------
- /// Complement this * -I^dim
+ /// REVERSE X~ negates the right basis elements.
+ GO reverse() const
+ {
+   GO r(*this);
+   for ( EMapIter emi = r._coefs.begin(), END = r._coefs.end(); emi != END; ++emi )
+     {
+       const int grade = (*emi).first.grade(); 
+       const value_type sign(basis_type::reversalSign(grade));
+       (*emi).second =  sign * (*emi).second;
+     }
+   return r;
+ }
+
+ //----------------------------------------------------------
+ /// Complement this * I_(dim)^(-1) = this * I_(dim)~
  GO dual( int dim ) const
  {
    const basis_type I(basis_type::psuedoScalar( dim ));
    GO compme;
+   /// sign change for reversing the psuedoScalar
+   int sign = basis_type::reversalSign(dim);
    for ( EMapCIter emi = _coefs.begin(), END = _coefs.end(); emi != END; ++emi )
-     compme._coefs[ basis_type( (*emi).first, I ) ] = (*emi).second;
+     {
+       const basis_type dual_e( (*emi).first, I );
+       /// sign change for applying psuedoScalar
+       value_type new_sign(sign * dual_e.getSign());
+       compme._coefs[dual_e] = new_sign * (*emi).second;
+     }
    return compme;
  }
 
  //----------------------------------------------------------
  /// subtraction
- GO operator-(const GO& right) const {
+ GO operator-(const GO& right) const 
+ {
    GO sub;
    const ElementMap &rem = right._coefs;
    EMapCIter righti = rem.begin(), REnd = rem.end();
    EMapCIter lefti = _coefs.begin(), LEnd = _coefs.end();
-   while((righti != REnd) || (lefti != LEnd)) {
-     if ((righti != REnd) && (lefti != LEnd)) {
-       if ((*righti).first < (*lefti).first) {
-	 sub._coefs[(*righti).first] = -(*righti).second;
-	 ++righti;
-       } else if ((*lefti).first < (*righti).first) {
-	 sub._coefs[(*lefti).first] = (*lefti).second;
-	 ++lefti;
-       } else {  // must be equal
-	 if ((*lefti).first != (*righti).first) std::cout << "bang\n";
-	 const value_type diff = (*lefti).second - (*righti).second;
-	 if (diff != value_type(0))
-	   sub._coefs[(*lefti).first] = diff;
-	 ++righti;
-	 ++lefti;
-       }
-     } else if (righti != REnd) {
-       sub._coefs[(*righti).first] = -(*righti).second;
-       ++righti;
-     } else if (lefti != LEnd) {
-       sub._coefs[(*lefti).first] = (*lefti).second;
-       ++lefti;
+   while((righti != REnd) || (lefti != LEnd)) 
+     {
+       if ((righti != REnd) && (lefti != LEnd)) 
+	 {
+	   if ((*righti).first < (*lefti).first) 
+	     {
+	       sub._coefs[(*righti).first] = -(*righti).second;
+	       ++righti;
+	     } 
+	   else if ((*lefti).first < (*righti).first) 
+	     {
+	       sub._coefs[(*lefti).first] = (*lefti).second;
+	       ++lefti;
+	     } 
+	   else 
+	     {  // must be equal
+	       if ((*lefti).first != (*righti).first) std::cout << "bang\n";
+	       const value_type diff = (*lefti).second - (*righti).second;
+	       if (diff != value_type(0))
+		 sub._coefs[(*lefti).first] = diff;
+	       ++righti;
+	       ++lefti;
+	     }
+	 } 
+       else if (righti != REnd) 
+	 {
+	   sub._coefs[(*righti).first] = -(*righti).second;
+	   ++righti;
+	 } 
+       else if (lefti != LEnd) 
+	 {
+	   sub._coefs[(*lefti).first] = (*lefti).second;
+	   ++lefti;
+	 }
      }
-   }
    if (sub._coefs.empty())
      sub._coefs[ e0 ] = value_type(0);
    return sub;
@@ -576,32 +680,43 @@ template<class T, class B=E<4,1> >
    const ElementMap &rem = right._coefs;
    EMapCIter righti = rem.begin(), REnd = rem.end();
    EMapCIter lefti = _coefs.begin(), LEnd = _coefs.end();
-   while((righti != REnd) || (lefti != LEnd)) {
-     if ((righti != REnd) && (lefti != LEnd)) {
-       if ((*righti).first < (*lefti).first) {
-	 add._coefs[(*righti).first] = (*righti).second;
-	 ++righti;
-       } else if ((*lefti).first < (*righti).first) {
-	 add._coefs[(*lefti).first] = (*lefti).second;
-	 ++lefti;
-       } else {  // must be equal
-	 if ((*lefti).first != (*righti).first) std::cout << "bang\n";
-	 const value_type sum = (*lefti).second + (*righti).second;
-	 if (sum != value_type(0))
-	   add._coefs[(*lefti).first] = sum;
-	 ++righti;
-	 ++lefti;
-       }
-     } else if (righti != REnd) {
-       add._coefs[(*righti).first] = (*righti).second;
-       ++righti;
-     } else if (lefti != LEnd) {
-       add._coefs[(*lefti).first] = (*lefti).second;
-       ++lefti;
-     } else {
-       std::cout << "wtf";
+   while((righti != REnd) || (lefti != LEnd)) 
+     {
+       if ((righti != REnd) && (lefti != LEnd)) 
+	 {
+	   if ((*righti).first < (*lefti).first) {
+	     add._coefs[(*righti).first] = (*righti).second;
+	     ++righti;
+	   } else if ((*lefti).first < (*righti).first) 
+	     {
+	       add._coefs[(*lefti).first] = (*lefti).second;
+	       ++lefti;
+	     } 
+	   else 
+	     {  // must be equal
+	       if ((*lefti).first != (*righti).first) std::cout << "bang\n";
+	       const value_type sum = (*lefti).second + (*righti).second;
+	       if (sum != value_type(0))
+		 add._coefs[(*lefti).first] = sum;
+	       ++righti;
+	       ++lefti;
+	     }
+	 } 
+       else if (righti != REnd) 
+	 {
+	   add._coefs[(*righti).first] = (*righti).second;
+	   ++righti;
+	 } 
+       else if (lefti != LEnd) 
+	 {
+	   add._coefs[(*lefti).first] = (*lefti).second;
+	   ++lefti;
+	 } 
+       else 
+	 {
+	   std::cout << "wtf";
+	 }
      }
-   }
    if (add._coefs.empty())
      add._coefs[e0] = value_type(0);
    return add;
@@ -611,6 +726,7 @@ template<class T, class B=E<4,1> >
  /// negation
  GO operator-() const
  {
+   std::cout << "negating maybe not what you want" << std::endl;
    GO negme;
    for ( EMapCIter emi = _coefs.begin(), END = _coefs.end(); emi != END; ++emi )
      negme._coefs[ (*emi).first ] = -(*emi).second;
@@ -624,22 +740,27 @@ template<class T, class B=E<4,1> >
  {
    for ( EMapCIter emi = _coefs.begin(); emi != _coefs.end(); ++emi )
      {
-       if ( emi != _coefs.begin() )
+       if ( emi == _coefs.begin() )  // first element, no +/-
          {
-	   if ( (*emi).second > 0 )  os << " + " << (*emi).second;
-	   else                     os << " - " << -(*emi).second;
+	   os << (*emi).second;
+	 } 
+       else
+	 {
+	   if ( (*emi).second > 0 )  
+	     os << " + " << (*emi).second;
+	   else  // make negative component into a subtraction, no +-Nem  
+	     os << " - " << -(*emi).second;
          }
-       else                        os << (*emi).second;
-         
-       os << (*emi).first;
+       os << (*emi).first;  // the basis element.
      }
-   if (_coefs.empty()) os << "0";
+   if (_coefs.empty()) os << "0";  // incase we have nothing.
    return os;
  }
       
+ //------------------------------------------------------------
  /// the ELEMENT MAP key=Basis value=coefficients
- ElementMap _coefs;
-   
+ ElementMap _coefs;  
+ unsigned int _props;
 };
 
 /// left scalar product  s * A
@@ -668,6 +789,20 @@ template< class T, class B >
   GO<T,B> inner( const GO<T,B> &ga, const GO<T,B> &gb )
 {
   return ga.inner(gb);
+}
+
+/// left contraction aJX
+template< class T, class B >
+  GO<T,B> left( const GO<T,B>& ga, const GO<T,B>& gx )
+{
+  return ga.left(gx);
+}
+
+/// right contraction XLa
+template< class T, class B >
+  GO<T,B> right( const GO<T,B>& gx, const GO<T,B>& ga )
+{
+  return gx.right(ga);
 }
 
 /// inverse ( A )
@@ -748,7 +883,5 @@ GOsym simplify( const GOsym &g )
 
 
 #endif
-
-
 
 #endif
