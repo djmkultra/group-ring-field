@@ -449,26 +449,32 @@ template<class T, class B=E<4,1> >
    const ElementMap &lem = left._coefs;
    const ElementMap &rem = right._coefs;
 
-   for ( EMapCIter lefti = lem.begin(), LEnd = lem.end(); lefti != LEnd; ++lefti ) {
-     for ( EMapCIter righti = rem.begin(), REnd = rem.end(); righti != REnd; ++righti ) {
-       /// new basis element (product of two current left & right bases)
-       const basis_type pbase( (*lefti).first, (*righti).first );
-       /// ask selector if we want this product element
-       if (!Selector::select((*lefti).first, (*righti).first, pbase)) continue;
-       /// product of left-right elements, NOTE multiplied by base-product sign
-       const value_type pv =  value_type( pbase.getSign() ) * ((*lefti).second * (*righti).second);
-
-       /// ignore zeros
-       /// TODO: should consider an epsilon critera here? (hard to get floats back to zero!
-       if ( pv != value_type(0) && pv != value_type(-0) )  {
-	 if ( prod._coefs.find(pbase) == prod._coefs.end() ) { ///< first coefficient instance with this basis elem.
-	   prod._coefs[ pbase ] =  pv;
-	 } else { ///< basis element already exists, add coefficents
-	   prod._coefs[ pbase ] += pv;
+   for ( EMapCIter lefti = lem.begin(), LEnd = lem.end(); lefti != LEnd; ++lefti ) 
+     {
+       for ( EMapCIter righti = rem.begin(), REnd = rem.end(); righti != REnd; ++righti ) 
+	 {
+	   /// new basis element (product of two current left & right bases)
+	   const basis_type pbase( (*lefti).first, (*righti).first );
+	   /// ask selector if we want this product element
+	   if (!Selector::select((*lefti).first, (*righti).first, pbase)) continue;
+	   /// product of left-right elements, NOTE multiplied by base-product sign
+	   const value_type pv =  value_type( pbase.getSign() ) * ((*lefti).second * (*righti).second);
+	   
+	   /// ignore zeros
+	   /// TODO: should consider an epsilon critera here? (hard to get floats back to zero!
+	   if ( pv != value_type(0) && pv != value_type(-0) )  
+	     {
+	       if ( prod._coefs.find(pbase) == prod._coefs.end() ) 
+		 { ///< first coefficient instance with this basis elem.
+		   prod._coefs[ pbase ] =  pv;
+		 } 
+	       else 
+		 { ///< basis element already exists, add coefficents
+		   prod._coefs[ pbase ] += pv;
+		 }
+	     }
 	 }
-       }
      }
-   }
    /// additional pass to get rid of "0" valued elements
    EMapIter pi = prod._coefs.begin(), END = prod._coefs.end();
    while (pi != END)
