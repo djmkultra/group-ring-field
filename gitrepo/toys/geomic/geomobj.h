@@ -12,7 +12,7 @@
 //-----------------------------------------------------------------
 //
 /// Basis Element, uses a bit vector for k-blade bases / Clifford Algebra
-///  e0 represents scalars and is never printed out, bitvector = 0x0
+///  e0 represents scalars and is never printed out, bitvector-value = 0x0
 ///  e1,e2,...eN basis elements (bitvector e1 = 0x1, e2 = 0x2, e3 = 0x4 ...)
 ///  e1e2 = -e2e1 anti-communitive
 ///  <e1,e2> = 0  orthogonal
@@ -86,22 +86,17 @@ class E {
    setProduct(el,er,e1_opt,e2_opt);
  }
 
- /// Returns real basis elements 1..REAL_DIM
+ /// Creates real basis elements 1..REAL_DIM
  static E real(int element_id) { return E(element_id); }
- /// Returns imaginary basis elements 1..IMAGINARY_DIM
+ /// Creates imaginary basis elements 1..IMAGINARY_DIM
  static E imaginary(int element_id) { return E(element_id + REAL_DIM); }
 
  /// assignment operator
- //
  E &operator=(const E &e) { _id = e._id; return *this; }
 
- //
- //-----------------------------------------------------------------
 
  //-----------------------------------------------------------------
- //
  /// just handy numbers may not be meaningfull for anything but E<4,1>
- //
  enum {
    SCALAR_ID      = 0,    /// construct with this ID for scalar element
    e0             = 0,    /// scalar element id "e0" - generally not printed out.
@@ -110,11 +105,10 @@ class E {
    e3             = 1<<2,
    e4             = 1<<3,  /// e4 and eplus are the same in "conformal coordinates E<4,1>"
    eplus          = 1<<3,  /// common name for positive conformal coordinate e+e+ = +1
-   eminus         = 1<<(REAL_DIM),  /// first negative-norm / imaginary basis element.
+   eminus         = 1<<(REAL_DIM),  /// first negative-norm / imaginary basis element. e-e- = -1
    LAST_ELEM_ID   = REAL_DIM + IMAGINARY_DIM,
 
    /// used internally:
-   SCALAR_BIT_VEC = 0,   ///the scalar element is actually represented as 0 internally
    SIGN_BIT       = 1 << max_dim /// we use the type's sign-bit to track sign changes internally
  };
 
@@ -175,12 +169,10 @@ class E {
  /// Basis Element Product Operator
  /// operator*()
  //
- E operator*( E &right ) const { return E( *this, right );  }
+ E operator*( E &right ) const { return E( *this, right ); }
 
  //-----------------------------------------------------------------
- //
  /// Print, because of auto-cast, this must be called from external << op.
- //
  std::ostream &operator<<(std::ostream &os) const
  {
    for (int i = 0; i < LAST_ELEM_ID; ++i) {
@@ -261,7 +253,7 @@ template<int R, int I, class BV_T >
 }
 
 /// some named bases -------------------------------
-/// probably not good to keep these around long-term.
+/// probably NOT good to keep these around long-term.
 const E<>    e0     (E<>::e0, true);  // scalar element, dimensionless
 const E<>    e1     (E<>::e1, true);
 const E<>    e2     (E<>::e2, true);
@@ -290,27 +282,15 @@ template<class T, class B=E<4,1> >
  public:
  //----------------------------------------------------------
  typedef T     value_type;   ///< ex float, double, etc... coefficients
- typedef B     basis_type;   ///< ex E(0), E(1)... replaced with real basis later
+ typedef B     basis_type;   ///< ex E(0), E(1)... see basis description above.
  //----------------------------------------------------------
 
  //----------------------------------------------------------
  /// ELEMENT MAP TYPE: key = Basis (E)  value = coefficient
  typedef typename std::map<basis_type,value_type> ElementMap;
- typedef typename ElementMap::iterator                  EMapIter;
- typedef typename ElementMap::const_iterator            EMapCIter;
+ typedef typename ElementMap::iterator            EMapIter;
+ typedef typename ElementMap::const_iterator      EMapCIter;
  //----------------------------------------------------------
-
- //----------------------------------------------------------
- /// Handy to remember things about GOs
- /// TODO(djmk) remove, not used, nor should it be....
- enum Properties {
-   UNIT   = 1<<0,                  // unit magnitude
-   CONFORMAL = 1<<1,               // null-vector mag = 0
-   VERSOR = 1<<2,                  // apply operator VxV^(-1)
-   ROTOR  = 1<<3 | UNIT | VERSOR,  // apply operator Vx~V
-   TRANSLATE = 1<<4 | ROTOR,       // does translation
-   ROTATION = 1<<5 | ROTOR         // does rotation
- };
 
  //----------------------------------------------------------
  /// Constructors
