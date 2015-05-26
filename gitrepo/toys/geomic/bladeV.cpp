@@ -15,16 +15,20 @@ int main( int argc, char **argv )
   GOf A(0.0, 1.0, 2.0, 3.0);
   GOsym As(S("0"), S("a1"), S("a2"), S("a3"));
 
+  /// Conformal zero vector
   GOsym N0 = GOsym::conformal(S("0"),S("0"),S("0"));
   std::cout << " N0 = " << N0 << " = " << GOsym::n0() << std::endl;
   std::cout << " N0N0 = " << N0*N0 << "  .  " << inner(N0,N0) << std::endl;
   std::cout << " N0N0 = " << GOsym::product<GOsym::GEOMETRIC>(N0,N0) << std::endl;
 
+  /// Scalar element test
   GOsym E0 = GOsym(S("1"),e0);
   std::cout << E0 << " * " << E0 << " = " << E0 * E0 << std::endl;
   std::cout << " 1 * A = " << E0 * As << std::endl; 
   GOsym E1 = GOsym(S("1"),e1);
   std::cout << E1 << " * " << E1 << " = " << E1 * E1 << std::endl;
+
+  /// Conformal basis element inspection
   std::cout << " n0 " << GOf::n0() << "   ni " << GOf::ni() << std::endl;
   std::cout << " n0ni " << GOf::n0() * GOf::ni() << std::endl;
   std::cout << " nin0 " << GOf::ni() * GOf::n0() << std::endl;
@@ -32,6 +36,7 @@ int main( int argc, char **argv )
   std::cout << " n0n0 " << GOf::n0() * GOf::n0() << std::endl;
   std::cout << " nini " << GOf::ni() * GOf::ni() << std::endl;
 
+  /// Conformal vectors test
   GOf W = GOf::conformal(1, 2, 3);
   GOf Y = GOf::conformal(1, .5, 3);
   std::cout << " W homogenious = " << W << "  W.W = " << inner(W,W) << "  W*W " << W*W << std::endl;
@@ -59,6 +64,7 @@ int main( int argc, char **argv )
   GOsym Ni = GOsym::ni();
   std::cout << " Ni.Ws = " << inner(Ni,Ws) << std::endl << std::endl;
 
+  /// No invert for conformal objects. NANNANAN
   GOf aaa = GOf::conformal(2,2,2);
   std::cout << " conformal geometry doesn't invert " << std::endl;
   std::cout << " aaa " << aaa << " inv " << aaa.inverse() << "  *  " << aaa * aaa.inverse() << std::endl;
@@ -66,6 +72,7 @@ int main( int argc, char **argv )
 
   W = GOf::conformal(1,0,0);
 
+  /// Manualy build the parallel plane translation versor, this saved the day!
   GOf Pa = GOf(1,e2) + GOf::ni() * 1;
   GOf Pb = GOf(1,e2) + GOf::ni() * .5;
   std::cout << " pa =" << Pa << " pb=" << Pb << "  sammich " << Pa * Pb * W * Pb * Pa << std::endl;
@@ -74,8 +81,9 @@ int main( int argc, char **argv )
   std::cout << " W pb " << W * Pb << "      sammich " << (Pa * Pb) * W * (Pb * Pa) << std::endl;
   GOf PaPb = Pa * Pb;
   GOf PbPa = Pb * Pa;
-  std::cout << " PaPb " << PaPb << "  sammmmich " << PaPb * W * PbPa << std::endl;
+  std::cout << " PaPb " << PaPb << "  sammmmich " << PaPb * W * PbPa << std::endl << std::endl;
 
+  /// Test the translation versor
   GOsym Tr = GOsym::translateVersor(As);
   std::cout << " Tr(A) = " << Tr << "  Tr(A)^(-1) = " << Tr.inverse() << std::endl; 
   GOf Ef1(1,e2);
@@ -93,11 +101,13 @@ int main( int argc, char **argv )
   std::cout << " T(A)wT(A)~ = " << T * GOf::extract(W) * T.inverse() << "  no work with native " << GOf::extract(W) << std::endl;
   std::cout << " T(A)~WT(A) = " << T.inverse() * W * T << std::endl;
   std::cout << "    = " << GOf::extract(T * W * T.inverse()) << "  native extract " << std::endl;
-  std::cout << " expecting " << GOf::extract(W) + Ef1 << std::endl;
+  std::cout << " expecting " << GOf::extract(W) + Ef1 << std::endl << std::endl;
 
+  /// Basic vector test
   std::cout << std::endl << std::endl;
   std::cout << " A  = " << A << std::endl;
-  std::cout << " A^-1 = " << A.inverse() << "  AA^-1 " << A * A.inverse() << std::endl;
+  std::cout << " A^-1 = " << A.inverse() << std::endl;
+  std::cout << " AA^-1 " << A * A.inverse() << std::endl;
   std::cout << " AA = " << A * A << std::endl;
   std::cout << " A^(-1) = " << inverse(A) << std::endl;
   std::cout << " As = " << As << std::endl;
@@ -108,6 +118,7 @@ int main( int argc, char **argv )
   std::cout << " B  = " << B << std::endl;
   std::cout << " Bs = " << Bs << std::endl;
    
+  /// Wedges and duals
   GOf AwB = wedge(A, B);
   GOsym AwBs = wedge(As, Bs);
   std::cout << " A ^ B = " << AwB << std::endl;
@@ -124,14 +135,15 @@ int main( int argc, char **argv )
   std::cout << " C  = " << C << std::endl;
   std::cout << " Cs = " << Cs << std::endl << std::endl;
 
+  /// Right cotraction 
   std::cout << "Cs^BsLAs = right(Cs^Bs, As) = " << std::endl << right(wedge(Cs,Bs),As) << std::endl << std::endl; 
 
-   
   GOf D(0.0, -.5, -1.5, 1.0);
   GOsym Ds(S("0"), S("d1"), S("d2"), S("d3"));
   std::cout << " D  = " << D << std::endl;
   std::cout << " Ds = " << Ds << std::endl;
    
+  /// More wedge and products and +- and reversal
   GOf CwD = wedge(C,D);
   GOsym CwDs = wedge(Cs,Ds);
   std::cout << " C ^ D = " << CwD << "   mag  " << inner(CwD,CwD) << std::endl;
@@ -140,12 +152,15 @@ int main( int argc, char **argv )
   std::cout << " C ^ D = " << CwDs << std::endl;
   std::cout << " (C^C)~ rev = " << CwDs.reverse() << std::endl;
   std::cout << " (C*D)~ rev = " << (Cs*Ds).reverse() << std::endl;
-   
+ 
+  /// Meet
   std::cout << " A^B V C^D = "  << meet( AwB, CwD, 3 ) << std::endl;
   std::cout << " A^B V C^D = "  << simplify( meet( AwBs, CwDs, 3 ) ) << std::endl;
   std::cout << " C^D V A^B = "  << meet( CwD, AwB, 3 ) << std::endl;
   std::cout << " C^D V A^B = "  << simplify( meet( CwDs, AwBs, 3 ) ) << std::endl;
   std::cout << std::endl;
+  
+  /// More maths
   std::cout << " C - C = " << Cs - Cs << std::endl;
   std::cout << " C + C = " << Cs + Cs << std::endl;
   std::cout << " C * D - C . D - C ^ D = " << Cs * Ds - inner(Cs, Ds) - wedge(Cs, Ds) << std::endl;
