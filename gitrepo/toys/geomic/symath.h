@@ -22,6 +22,7 @@
 namespace Symath {
    
   const std::string WTF("??");
+  const std::string NOTANUMBER("NAN");
   const std::string ONE("1");
   const std::string ONE_("1");
   const std::string NEG_ONE("-1");
@@ -70,6 +71,7 @@ namespace Symath {
   //-----------------------------------------------------------------------------
   ///   DATA: Operator & Operands
   ///  Name/symbolic-quantity is stored in the base_type
+  /// TODO(djmk): remove mutable, make class immutable and use ptrs more, copies less.
   mutable operator_type _op;    /// operator
   mutable SymSP         _left;     /// left hand side
   mutable SymSP         _right;    /// right hand side
@@ -82,7 +84,7 @@ namespace Symath {
       
   //-----------------------------------------------------------------------------
   /// c-style string constructor
-  Sym( const char *c_str ) 
+  explicit Sym( const char *c_str ) 
   : base_type(c_str), _op(NOP), _left(0), _right(0)
   {
     /// default behavior:
@@ -108,8 +110,16 @@ namespace Symath {
   }
       
   //-----------------------------------------------------------------------------
+  /// string/basetype constructor
+  explicit Sym( const base_type& val ) 
+  : base_type(), _op(NOP), _left(0), _right(0)
+  {
+    setValue(val);
+  }
+
+  //-----------------------------------------------------------------------------
   /// char constructor (checks if you use the char for numeric values -1, 0, 1
-  Sym( const char c ) 
+  explicit Sym( const char c ) 
   : base_type(), _op(NOP), _left(0), _right(0) 
   { 
     if ( c == -1 )
@@ -129,36 +139,39 @@ namespace Symath {
       
   //-----------------------------------------------------------------------------
   /// integer constructor, number-Syms
-  Sym( int i ) 
+  explicit Sym( int i ) 
   : base_type(), _op(NOP), _left(0), _right(0) 
   { 
     if ( i ==  0 )      setValue(ZERO); 
     else if ( i == -0 ) setValue(ZERO);
-    else if ( i == -1 ) setValue(NEG);
+    else if ( i == -1 ) 
+      {
+	setValue(NEG + ONE);
+	_op = NEG;
+	_left = new Sym(ONE);
+      }
     else 
       {
 	std::stringstream ss;
 	ss << i;
 	setValue( ss.str() );
-      }
-         
+      }         
   }
       
   //-----------------------------------------------------------------------------
   //
   /// full algebra tree-node constructor
   //
-  Sym( const base_type     & val,         ///< expression string (all up to this node)
-       const operator_type & op    = NOP, ///< operation (intrisic symbol-values are NOP)
-       SymSP                 left  = SymSP(0),   ///< left operand (0 if not relevant)
-       SymSP                 right = SymSP(0)    ///< right operand (0 if not relevant)
-       ) 
+  Sym( const base_type     & val,               ///< expression string (all up to this node)
+       const operator_type & op,                ///< operation (intrisic symbol-values are NOP)
+       SymSP                 left,              ///< left operand (0 if not relevant)
+       SymSP                 right = SymSP(0) ) ///< right operand (0 if not relevant) 
   : base_type(val), _op(op), _left(left), _right(right) 
   {}
       
   //-----------------------------------------------------------------------------
   /// copy constructor
-  explicit Sym( const Sym &s ) 
+  Sym( const Sym &s ) 
   : base_type(s), _op(s._op), _left(0), _right(0)
   {
     if ( s._left  ) _left  = s._left->clone();
@@ -274,7 +287,7 @@ namespace Symath {
   }
   static bool isOne(const base_type& val)
   {
-    return isEmpty(val) || val == ONE || val == ONE_;
+    return (isEmpty(val) || val == ONE || val == ONE_);
   }
   static bool isOne(double val)
   {
@@ -298,26 +311,41 @@ namespace Symath {
   {
     return (getValue() == NEG && !_left && !_right);
   }
+  // -a
+  bool isNegateOp() const 
+  {
+    return (this->_op == NEG && _left && !_right);
+  }
+  // a - b
+  bool isMinusOp() const
+  {
+    return (this->_op == MINUS && _left && _right);
+  }
+  bool isZero() const 
+  {
+    return isZero(getValue());
+  }
+  bool isOne() const
+  {
+    return isOne(getValue());
+  }
+  bool isVariable() const 
+  {
+    return !_left && !_right && _op == NOP && !isOne() && !isZero();
+  }
 
   //-----------------------------------------------------------------------------
   /// -(*this)  NEGATE uinary
   Sym operator-() const   ///< NEGATE uninary
-  { 
-         
+  {    
     /// -0
-    if ( isZero(getValue()) )  
-      return Sym(ZERO);
-         
-    /// -1
-    if ( isOne(getValue()) )
+    if ( this->isZero() )
       {
-	return Sym( NEG + ONE , 
-		    NEG,
-		    new Sym(ONE));
+	return Sym(ZERO);
       }
          
     /// --A -> A
-    if ( this->_op == NEG ) // double negative
+    if ( this->isNegateOp() ) // double negative
       {
 	if ( _left )
 	  {
@@ -329,20 +357,12 @@ namespace Symath {
 	  }
       }
     
-    // - (x - y) = y - x
-    if ( this->_op == MINUS && _left && _right ) 
-      {
-	return Sym ( _right->getValue() + MINUS + _left->getValue(),
-		     MINUS,
-		     _right->clone(),
-		     _left->clone()
-		     );
-      }
+    /// TODO: handle -(b - a) --> (a - b) (standard ordering)
 
     /// new node - , A
     return Sym( NEG + getValue(),
 		NEG,
-		new Sym(*this) 
+		this->clone() 
 		);
   }
       
@@ -353,156 +373,74 @@ namespace Symath {
     base_type l = getValue();
     base_type r = s.getValue();
          
-    if ( isNegSign() && isOne(r) )  // "-" * 1
+    // TODO(djmk): NUKE
+    if ( this->isNegSign() && s.isOne() )  // "-" * 1
       {
+	std::cout << " ************ neg symbol? " << std::endl;
 	return Sym( NEG + ONE,
 		    NEG,
 		    new Sym(ONE)
 		    );
       }
     
-    if ( isOne(l) && isOne(r) )  // 1 * 1 = 1
+    // 1 * 1 = 1 because one is weird...
+    if ( this->isOne() && s.isOne() )  
       {
 	return Sym(ONE);
       }
 	 
-    if ( isZero(l) || isZero(r) )  // 0 * x = 0
+    // 0 * x = 0
+    if ( this->isZero() || s.isZero() )  
       {
 	return Sym(ZERO);
       }   
-         
+
+    // TODO(djmk): NUKE
     if ( isNegSign() && !isOne(r) && (s._op != NEG) )  /// "-" * x
       {
+	std::cout << " ************ neg symbol " << std::endl;
 	return Sym( getValue() + r, 
 		    NEG, 
 		    s.clone() 
 		    );
       }
-         
-    if ( isOne(l) )
+
+    // 1 * x
+    if ( this->isOne() )
       {
 	return s;
       }
-         
-    if ( isOne(r) ) 
+    // x * 1
+    if ( s.isOne() ) 
       {
-	return Sym(*this);
+	return *this;
       }
          
-    /// RETURN TO POSITIVE
-    /// -l * -r
-    if ( _op == NEG && s._op == NEG )  /// both neg (now pos)
+    /// Both sides are negates
+    /// -l * -r = l * r
+    if ( this->isNegateOp() && s.isNegateOp() )  /// both neg (now pos)
       {
-	l = l.substr(1);
-	r = r.substr(1);
-	if ( isOne(l) )
+	if ( _left && s._left )
 	  {
-	    if ( s._left )  // maybe there was a fresh neg to your right???
-	      return Sym(*(s._left));
-	    std::cout << " wtf?  " << getValue() << " * " << s.getValue() << std::endl;
-	    return Sym( ONE_ );
+	    return (*_left) * (*s._left);
 	  }
-	if ( isOne(r) )
-	  {
-	    if ( _left )
-	      {
-		return Sym( *(this->_left) );
-	      }
-               
-	    return Sym( ONE_ );
-	  }
-            
-	if ( !s._left || !_left )
-	  std::cout << " fcuk * bad " << std::cout;
-            
-	/// swap order, both neg, use left from each
-	if ( r < l && s._left && !_left )
-	  {
-	    return Sym( r + TIMES + l, 
-			TIMES, 
-			s._left->clone(), 
-			_left->clone() 
-			);
-               
-	  }
-            
-	return Sym( l + TIMES + r, 
-		    TIMES, 
-		    _left->clone(), 
-		    s._left->clone() 
-		    );
-      }  // end both sides negative
+	std::cout << " baaaaad * " << (*this) << " * " << s << std::endl;
+      }
          
-    if ( _op == NEG ) // left side is negative
+    // Left only is negate, keep negate above, (-l) * r = -(l*r)
+    if ( this->isNegateOp() )
       {
-	if ( isOne(l.substr(1)) && isOne(r) ) {  // should be handled above.
-	  return Sym( NEG + ONE,
-		      NEG,
-		      new Sym(ONE));
-	}
-
-	if ( l.substr(1) > r )
-	  {
-	    return Sym( NEG + r + TIMES + l.substr(1), 
-			NEG, 
-			new Sym( r + "*" + l.substr(1), 
-				 TIMES, 
-				 s.clone(), 
-				 _left->clone() 
-				 )
-			);
-	  }
-	else if ( isOne(r) ) 
-	  {
-	    std::cout << " wtf ?? ";
-	    return Sym(*this);
-	  }
-
-	//else this is already a neg node, replace left and your done
-	SymSP left = _left->clone();
-	SymSP right = s.clone();
-	SymSP out = new Sym( l.substr(1) + "*" + r, 
-			     TIMES, 
-			     left, 
-			     right 
-			     );
-
-	return Sym( l + TIMES + r, 
-		    NEG, 
-		    out
-		    );
-	    
+	return -( (*_left) * s );
       }
 
-    if ( s._op == NEG && s._left )  //right hand side is negative
+    //right hand side is negate, keep negate above l * (-r) = -(l*r)
+    if ( s.isNegateOp() ) 
       { 
-	if ( isOne(r.substr(1)) && isOne(l) ) // 1 * -1 = -1
-	  {
-	    return Sym( NEG + ONE, NEG, new Sym(ONE));
-	  }
-	if ( r.substr(1) < l )
-	  return Sym( r + "*" + l,
-		      NEG, 
-		      new Sym( r.substr(1) + "*" + l, 
-			       TIMES, 
-			       s._left->clone(), 
-			       this->clone() 
-			       ) 
-		      );
-	else 
-	  return Sym( NEG + l + "*" + r.substr(1), 
-		      NEG, 
-		      new Sym( l + "*" + r.substr(1), 
-			       TIMES, 
-			       this->clone(), 
-			       s._left->clone() 
-			       ) 
-		      );
+	return -( (*this) * (*s._left) );
       }
          
-    /// power TODO: shoud be a full sub-tree check... can't really rely on strings
     /// TODO(djmk) this is actuallly broken we can't do powers greather than 2...
-    if ( getValue() == s.getValue() )  
+    if ( *this == s )  
       {
 	return Sym( l + POW + base_type("2"),
 		    POW,
@@ -511,7 +449,7 @@ namespace Symath {
 		    );
       }
          
-    if ( s.getValue() < getValue() )  // swap order of operands
+    if ( s < (*this) )  // swap order of operands
       {
 	return Sym( r + "*" + l, 
 		    TIMES, 
@@ -524,38 +462,56 @@ namespace Symath {
     return Sym( l + "*" + r, 
 		TIMES, 
 		this->clone(), 
-		s.clone() 
-		);
+		s.clone() );
   }
 
   //-----------------------------------------------------------------------------
   //
   Sym &operator*=( const Sym &s )
   {
-    return *this= *this * s;;
+    return *this = (*this) * s;;
   }
       
   //-----------------------------------------------------------------------------
   Sym operator-( const Sym &s ) const 
   {
     /// a-a=0
-    if ( getValue() == s.getValue() )   return Sym(ZERO);
-    /// 1-1=0
-    if ( isOne(getValue()) && isOne(s.getValue()) ) 
+    if ( *this == s )   return Sym(ZERO);
+    
+    /// 1-1=0 because one is weird
+    // TODO not needed, handled by ==
+    if ( this->isOne() && s.isOne() ) 
       {
 	return Sym(ZERO);
       }
     /// 0-a=-a
-    if ( getValue() == ZERO )            return -s;
-    /// a-0=a
-    if ( s.getValue()     == ZERO )      return *this;
-    /// a--b = a+b
-    if ( s._op == NEG && s._left )
-      {
-	return *this + Sym(*s._left); 
+    if ( this->isZero() )
+      { 
+	return -s;
       }
-    /// a-b
-    base_type expr = OPR +  getValue() + MINUS + s.getValue() + CPR;
+    /// a-0=a
+    if ( s.isZero() )
+      {
+	return *this;
+      }
+    /// (-a) - (-b) = b - a
+    /// TODO this could be a problem for cannonical form.
+    if ( this->isNegateOp() && s.isNegateOp() ) 
+      {
+	return *s._left - *_left;
+      }
+    /// a--b = a+b
+    if ( s.isNegateOp() )
+      {
+	return (*this) + (*s._left); 
+      }
+    /// -a-b = -(a+b)
+    if ( this->isNegateOp() ) 
+      {
+	return -((*_left) + s);
+      }
+
+    base_type expr = getValue() + MINUS + s.getValue();
     return Sym(expr, 
 	       MINUS, 
 	       this->clone(), 
@@ -565,35 +521,37 @@ namespace Symath {
   //-----------------------------------------------------------------------------
   Sym &operator-=( const Sym &s )
   {
-    return *this = *this - s;
+    return *this = (*this) - s;
   }
       
   //-----------------------------------------------------------------------------
   Sym operator/( const Sym &s ) const 
   {
-    if ( s.getValue() == ONE ) return (*this);
-    if ( getValue() == ZERO )
+    if ( s.isOne() )
       {
-	s.clear();
+	return (*this);
+      }
+    if ( this->isZero() )
+      {
 	return Sym(ZERO);
       }
-    if ( s.getValue() == ZERO )
+    if ( s.isZero() )
       {
 	std::cerr << "Sym operator/() dividion by zero!!!!!!!!" << std::endl;
-	clear();
-	return Sym(ZERO);
+	return Sym(NOTANUMBER);
       }
          
-    if ( base_type::empty() )
+    /// because one is weird.
+    if ( this->isOne() )
       {
-	return Sym( base_type("1/") + s.getValue(), 
+	return Sym( ONE + DIV + s.getValue(), 
 		    DIV, 
 		    new Sym(ONE), 
 		    s.clone() 
 		    );
       }
          
-    return Sym( getValue() + "/" + s.getValue(), 
+    return Sym( getValue() + DIV + s.getValue(), 
 		DIV, 
 		this->clone(), 
 		s.clone() 
@@ -602,7 +560,7 @@ namespace Symath {
   //-----------------------------------------------------------------------------
   Sym &operator/=( const Sym &s )
   {
-    return *this = *this / s;
+    return *this = (*this) / s;
   }
       
   //-----------------------------------------------------------------------------
@@ -613,18 +571,18 @@ namespace Symath {
     base_type r = s.getValue();
          
     /// 0 + 0 = 0
-    if ( isZero(l) && isZero(r) )
+    if ( this->isZero() && s.isZero() )
       {
 	return Sym(ZERO);
       }
     
     /// 0 + s
-    if ( isZero(l) )
+    if ( this->isZero() )
       { 
 	return s; 
       }
     /// this + 0
-    if ( isZero(r) )
+    if ( s.isZero() )
       {
 	return *this;
       }
@@ -633,158 +591,57 @@ namespace Symath {
     if ( r.empty() ) r = ONE;
     if ( l.empty() ) l = ONE;
          
-    /// +-this += -s
-    if ( s._op == NEG ) //neg right
+    /// Both negates : -l + -r = -(l + r)
+    if ( this->isNegateOp() && s.isNegateOp() )
       {
-	/// this += -s == 0? 
-	if ( _op != NEG )
-	  {
-	    /// CANCELATOIN OF IDENTICAL TERMS: see if we cancel and become zero
-	    if ( l == r.substr(1) )  /// left 
-	      {
-		return Sym(ZERO);
-	      }
-	    if ( isOne(r.substr(1)) && isOne(l) ) 
-	      {
-		return Sym(ZERO);
-	      }
-	  }
+	return -( *(this->_left) + *(s._left) );
       }
-    else /// +-this += s
+ 
+    // neg right, check for cancellation
+    if ( s.isNegateOp() ) 
       {
-	/// -this += s == 0?
-	if ( _op == NEG ) // neg left
-	  {
-	    /// CANCELLATION OF IDENTICAL TERMS chcek to see if we cancel
-	    if ( l.substr(1) == r )  // see if a-a = 0
-	      {
-		return Sym(ZERO);
-	      }
-	    if ( isOne(l.substr(1)) && isOne(r) )  // Ones are special
-	      {
-		return Sym(ZERO);
-	      }
-	  }
+	if ( *this == *s._left ) return Sym(ZERO);
+      }
+
+    // neg left check for cancellation
+    if ( this->isNegateOp() ) // neg left
+      {
+	if ( (*_left) == s ) return Sym(ZERO);
       }
          
     /// Both sides are relevant
-                  
+
     /// always store in ascending sort order (for communitive ops anyway)
-    if ( r < l )
+    if ( s < (*this) )
       {
-	return Sym( OPR + s.getValue() + PLUS + getValue() + CPR,
+	return Sym( s.getValue() + PLUS + getValue(),
 		    PLUS,
 		    s.clone(),
 		    this->clone()
 		    );
       }
-    else 
-         
-      return Sym( OPR + getValue() + PLUS + s.getValue() + CPR, 
-		  PLUS, 
-		  this->clone(), 
-		  s.clone() 
-		  );
+    
+    return Sym( getValue() + PLUS + s.getValue(), 
+		PLUS, 
+		this->clone(), 
+		s.clone() 
+		);
   }
       
       
   //-----------------------------------------------------------------------------
   Sym &operator+=( const Sym &s ) 
   { 
-    base_type l = getValue();
-    base_type r = s.getValue();
-
-    /// fucking ones are a pain in the ass.
-    if ( (isOne(l) && isNegOne(r)) || (isOne(r) && isNegOne(l)) ) 
-      {
-	clear();
-	setValue(ZERO);
-	return *this;
-      }
-
-    /// 0 += s
-    if ( isZero(l) ) 
-      { 
-	*this = s; 
-	return *this; 
-      }
-    /// this += 0
-    if ( isZero(r) )  return *this;
-         
-    /// 1s
-    if ( r.empty() ) r = ONE;
-    if ( l.empty() ) l = ONE;
-         
-    /// +-this += -s
-    if ( s._op == NEG ) //neg right
-      {
-	/// this += -s == 0? 
-	if ( _op != NEG )
-	  {
-	    /// CANCELATOIN OF IDENTICAL TERMS: see if we cancel and become zero
-	    if ( l == r.substr(1) )  /// left 
-	      {
-		clear();
-		setValue(ZERO);
-		return *this;
-	      }
-	    if ( isOne(l) && isOne(r.substr(1)) )
-	      {
-		clear();
-		setValue(ZERO);
-		return *this;
-	      }
-	  }
-      }
-    else /// +-this += s
-      {
-	/// -this += s == 0?
-	if ( _op == NEG ) // neg left
-	  {
-	    /// CANCELLATION OF IDENTICAL TERMS chcek to see if we cancel
-	    if ( l.substr(1) == r )  // see if a-a = 0
-	      {
-		clear();
-		setValue(ZERO);
-		return *this;
-	      }
-	    if ( isOne(l.substr(1)) && isOne(r.substr(1)))
-	      {
-		clear();
-		setValue(ZERO);
-		return *this;
-	      }
-	  }
-      }
-         
-    /// Both sides are relevant
-         
-    SymSP me = this->clone();
-    SymSP rt = s.clone();
-         
-         
-    /// always store in ascending sort order (for communitive ops anyway)
-    if ( r < l )
-      {
-	setValue( OPR + r + PLUS + l + CPR );
-	_op    = PLUS;
-	_left  = rt;
-	_right = me;
-      }
-    else 
-      {
-	setValue( OPR + l + PLUS + r + CPR );
-	_op       = PLUS;
-	_left     = me;
-	_right    = rt;
-      }
-         
-    return *this;
+    return *this = *this + s;
   }
       
   //-----------------------------------------------------------------------------
+  operator bool() const 
+  { 
+    return !isZero();
+  }
   //-----------------------------------------------------------------------------
-  bool operator<( int i ) const 
+  bool operator<( int i ) const /// WTF?
   { 
     if ( getValue()[0] == '-' ) return true; 
     std::stringstream iss;
@@ -793,25 +650,45 @@ namespace Symath {
     return false; 
   }
   //-----------------------------------------------------------------------------
-  bool operator<( const Sym &s )
+  // usefull for a cannonical form, but what is it?
+  bool operator<( const Sym &s ) const
   {
     return getValue() < s.getValue();
   }
-  //-----------------------------------------------------------------------------
-  operator bool() const 
-  { 
-    if ( _op == ZERO || getValue() == ZERO || getValue() == NEG_ZERO ) 
-      return false;  
-    return true; 
-  }
+
   //-----------------------------------------------------------------------------
   bool operator==( const Sym &s ) const 
-  { 
-    return getValue() == s.getValue(); 
+  {
+    // would be fast but unreliable to use
+    // return getValue() == s.getValue()
+    // because 0 and 1 are special...?
+    if ( this->isOne() && s.isOne() ) return true;
+    if ( this->isZero() && s.isZero() ) return true;
+
+    if (!_left & !_right) // must be a variable
+      {
+	return getValue() == s.getValue();
+      }
+    if ( _op != s._op ) return false;
+    if ( _left )
+      {
+	if (!s._left) return false;
+	if (!(*_left == *s._left)) return false;
+      }
+    else if (s._left) return false;
+    if ( _right )
+      {
+	if (!s._right) return false;
+	if (!(*_right == *s._right)) return false; 
+      }
+    return true; 
   }
   //-----------------------------------------------------------------------------
   bool operator==( const value_type &s ) const 
   { 
+    if ( this->isOne() && isOne(s) ) return true;
+    if ( this->isZero() && isZero(s) ) return true;
+    if ( _left || _right ) return false;
     return getValue() == s; 
   }
       
@@ -974,7 +851,7 @@ namespace Symath {
       
   //-----------------------------------------------------------------------------
   /// Print as a tree
-  void printTree(std::ostream &os, const std::string &indent = std::string("")) const
+  std::ostream& printTree(std::ostream &os, const std::string &indent = std::string("")) const
   {
     const std::string indent_sz("  ");
          
@@ -983,7 +860,7 @@ namespace Symath {
       {
 	if ( ! _left ) {
 	  std::cout << "wtf" ;
-	  return;
+	  return os;
 	}
 	Sym *sym = _left;
             
@@ -994,7 +871,7 @@ namespace Symath {
 	    if (  sym->_left && sym->_left->isLeaf()  && !sym->_right )
 	      {
 		os << indent << "--+" << *(sym->_left) << "\n";
-		return;
+		return os;
 	      }
 	    /// subtraction op miss named
 	    else if ( sym->_left && sym->_right )
@@ -1032,21 +909,21 @@ namespace Symath {
                   }
                   
 	      }
-	    return;
+	    return os;
 	  } /// END DOULBE NEGATIVE
             
             /// basic leaf neg
 	if ( sym->isLeaf() )
 	  {
 	    os << indent << "-" << (*sym) << "\n";
-	    return;
+	    return os;
 	  } 
             
 	/// operation leaf neg:  - A * B
 	if ( sym->_op != NOP && sym->_left && sym->_left->isLeaf() && sym->_right && sym->_right->isLeaf() )
 	  {
 	    os << indent << "-( " << *(sym->_left) << " " << sym->_op << " " << *(sym->_right) << " )\n";
-	    return;
+	    return os;
 	  }
 	/// operation node neg
 	if (sym->_op != NOP && sym->_op != NEG )
@@ -1054,12 +931,12 @@ namespace Symath {
 	    if ( sym->_right ) sym->_right->printTree( os, indent + indent_sz + indent_sz );
 	    os << indent << "-" << sym->_op << "\n";
 	    if ( sym->_left  ) sym->_left->printTree( os, indent + indent_sz + indent_sz);
-	    return;
+	    return os;
 	  }
 	else /// what else could there be???
 	  {
 	    os << indent << "-? (" << (*this) << ")\n";
-	    return;
+	    return os;
 	  }
             
       } /// END IF NEG NODE
@@ -1068,7 +945,7 @@ namespace Symath {
     if ( _op != NOP  && _right && _right->isLeaf() && _left && _left->isLeaf() )
       {
 	os << indent << " ( " << (*_left) << " " << _op << " " << (*_right) << " )\n";
-	return;
+	return os;
       }
          
     if ( _right )
@@ -1081,10 +958,10 @@ namespace Symath {
     else os << indent << "1\n";
     if ( _left  )
       _left->printTree( os, indent + indent_sz );
-         
+    return os;
   }
       
-  void printInfix( std::ostream &os, const base_type &last_op = NOP ) const
+  std::ostream& printInfix( std::ostream &os, const base_type &last_op = NOP ) const
   {
     bool parens = true;
     if ( last_op == NOP || last_op == PLUS || (!_left && !_right) ) parens = false; 
@@ -1097,7 +974,7 @@ namespace Symath {
     else if ( _op != NEG )             os << getValue();
     if ( _right ) _right->printInfix( os, _op );
     if ( parens ) os << CPR;
-         
+    return os;
   }
       
       

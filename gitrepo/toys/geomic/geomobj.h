@@ -299,9 +299,9 @@ template<class T, class B=E<4,1> >
 
  /// Construct a 3D Geobj vector,
  GO(const value_type &scalar,  /// basis element "1" (scalar part)
-    const value_type &ve1 = 0, /// basis element e0 e.g. x
-    const value_type &ve2 = 0, /// basis element e1 e.g. y
-    const value_type &ve3 = 0) /// basis element e2 e.g. z
+    const value_type &ve1 = value_type(0), /// basis element e0 e.g. x
+    const value_type &ve2 = value_type(0), /// basis element e1 e.g. y
+    const value_type &ve3 = value_type(0)) /// basis element e2 e.g. z
  {
    if ( scalar )
      _coefs[basis_type(0)] = scalar;
@@ -491,7 +491,7 @@ template<class T, class B=E<4,1> >
    
    /// make sure we have at least one element, even if it is zero.
    if (prod._coefs.empty())
-     prod._coefs[e0] = 0;
+     prod._coefs[e0] = value_type(0);
    return prod;
  }
 
