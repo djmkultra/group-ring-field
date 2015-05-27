@@ -45,7 +45,9 @@ int main( int argc, char** argv )
    sum += b;
    cout << " sum = " << sum << endl;
    sum += c;
-   cout << " sum = " << sum << endl;
+   cout << " sum = " << sum << endl << endl;
    
+   cout << " sin:  " << sin(-(a-b)) * c + d << endl;
+
    return 0;
 }

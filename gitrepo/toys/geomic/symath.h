@@ -21,19 +21,33 @@
 
 namespace Symath {
    
+  /// Badness symbols, we hope to never see.
   const std::string WTF("??");
   const std::string NOTANUMBER("NAN");
+
+  /// Important constants
+  /// TODO: should just be 0 and 1
   const std::string ONE("1");
   const std::string ONE_("1");
   const std::string NEG_ONE("-1");
   const std::string ZERO("0");
   const std::string NEG_ZERO("-0");
+
+  /// Operators and functions, these work directly on symbols: S1 * S2
   const std::string MINUS("-");
   const std::string NEG("-");
   const std::string PLUS("+");
   const std::string TIMES("*");
   const std::string DIV("/");
+
+  /// See bottom of file for definitions that work with symbols: pow(S1,S2)
   const std::string POW("^");
+  const std::string SIN("Sin");
+  const std::string COS("Cos");
+
+  /// TODO: Need to fill out "function" implementation, what about n-ary ops?
+
+  /// These are used in parsing and print-out, not in symbols.
   const std::string OPR("(");
   const std::string CPR(")");
   const std::string NOP("?");
@@ -46,12 +60,14 @@ namespace Symath {
   /// names instead of numbers, capable of some simplifications
   /// would be nice to make this really dance
   //
+  // TODO fix use of Ptrs and clone, only copy on modify.
 
   template <class BASE_T = std::string, class OPER_T = std::string >   
     class Sym : public BASE_T, public gutz::Counted {
   public:
   /// NOTE an empty symbol means 1 (one, mult-identiy) NOT 0 (add-identity)
-      
+  /// ... though why we end up with empty symbols is weirdness.
+    
   //-----------------------------------------------------------------------------
   /// This is a sub-class of std::string, expression stored in parent
   ///   getValue(), setValue() give you easy access, so as to express yourself 
@@ -356,9 +372,13 @@ namespace Symath {
 	    std::cerr << "bad operator-()" << std::endl;
 	  }
       }
-    
-    /// TODO: handle -(b - a) --> (a - b) (standard ordering)
 
+    // -(a-b) -> (b-a)
+    if ( this->isMinusOp() )
+      {
+	return *_right - *_left;
+      }
+    
     /// new node - , A
     return Sym( NEG + getValue(),
 		NEG,
@@ -373,16 +393,6 @@ namespace Symath {
     base_type l = getValue();
     base_type r = s.getValue();
          
-    // TODO(djmk): NUKE
-    if ( this->isNegSign() && s.isOne() )  // "-" * 1
-      {
-	std::cout << " ************ neg symbol? " << std::endl;
-	return Sym( NEG + ONE,
-		    NEG,
-		    new Sym(ONE)
-		    );
-      }
-    
     // 1 * 1 = 1 because one is weird...
     if ( this->isOne() && s.isOne() )  
       {
@@ -394,16 +404,6 @@ namespace Symath {
       {
 	return Sym(ZERO);
       }   
-
-    // TODO(djmk): NUKE
-    if ( isNegSign() && !isOne(r) && (s._op != NEG) )  /// "-" * x
-      {
-	std::cout << " ************ neg symbol " << std::endl;
-	return Sym( getValue() + r, 
-		    NEG, 
-		    s.clone() 
-		    );
-      }
 
     // 1 * x
     if ( this->isOne() )
@@ -587,10 +587,6 @@ namespace Symath {
 	return *this;
       }
    
-    /// 1s
-    if ( r.empty() ) r = ONE;
-    if ( l.empty() ) l = ONE;
-         
     /// Both negates : -l + -r = -(l + r)
     if ( this->isNegateOp() && s.isNegateOp() )
       {
@@ -600,13 +596,19 @@ namespace Symath {
     // neg right, check for cancellation
     if ( s.isNegateOp() ) 
       {
+	// a + (-a) = 0
 	if ( *this == *s._left ) return Sym(ZERO);
+	// a + (-b) = a - b
+	return (*this) - *(s._left);
       }
 
     // neg left check for cancellation
     if ( this->isNegateOp() ) // neg left
       {
+	// -a + a = 0
 	if ( (*_left) == s ) return Sym(ZERO);
+	// -a + b = b - a
+	return s - (*_left);
       }
          
     /// Both sides are relevant
@@ -968,10 +970,10 @@ namespace Symath {
     if ( _op == TIMES && last_op == NEG ) parens = false;
          
     if ( parens ) os << OPR;
-    if ( _op == NEG ) os << NEG;
+    if ( isNegateOp() ) os << NEG;
     if ( _left )  _left->printInfix( os, _op );
-    if ( _op != NOP && _op != NEG ) os << _op;
-    else if ( _op != NEG )             os << getValue();
+    if ( _op != NOP && !isNegateOp() ) os << _op;
+    else if ( !isNegateOp() )             os << getValue();
     if ( _right ) _right->printInfix( os, _op );
     if ( parens ) os << CPR;
     return os;
@@ -998,7 +1000,8 @@ namespace Symath {
   };
    
   typedef Sym<>   Symbol;
-   
+
+  /// These are handy but still verbose to use outside the namespace.
   const  Symbol   one(ONE);
   const  Symbol   zero(ZERO);
   const  Symbol   a("a"); 
@@ -1019,20 +1022,30 @@ namespace Symath {
 
 
 //-----------------------------------------------------------------------------
-//// specialized the output for symbol since for whatever reason I made the empty symbol 1
+// Print operator, do we really need this?
 std::ostream &operator<<( std::ostream &os, const Symath::Symbol &s  )  
 {
   return s.operator<<( os );
-   
-   
-  if ( s.empty() ) os << "1";
-  else 
-    {
-      os << std::string(s);
-    }
-  return os;
 }
 
+// Functions added to global namespace, could we do this in the namespace?
 
+Symath::Symbol sin(const Symath::Symbol& s) 
+{
+  return Symath::Symbol(Symath::SIN + Symath::OPR + s.getValue() + Symath::CPR,
+			Symath::SIN,
+			NULL,       // right associative function?? still working on it.
+			s.clone());
+}
+
+Symath::Symbol cos(const Symath::Symbol& s) 
+{
+  return Symath::Symbol(Symath::COS + Symath::OPR + s.getValue() + Symath::CPR,
+			Symath::COS,
+			NULL,       // right associative function?? still working on it.
+			s.clone());
+}
+
+// TODO(djmk): the rest of cmath...
 
 #endif
