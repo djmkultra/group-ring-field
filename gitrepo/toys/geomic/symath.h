@@ -60,7 +60,10 @@ namespace Symath {
   /// names instead of numbers, capable of some simplifications
   /// would be nice to make this really dance
   //
-  // TODO fix use of Ptrs and clone, only copy on modify.
+  // TODO fix use of Ptrs and clone, only copy on modify. almost done
+  // TODO make neg and minus distinquishable at least for printing
+  // TODO should ops be strings?
+  // TODO functions n-ary
 
   template <class BASE_T = std::string, class OPER_T = std::string >   
     class Sym : public BASE_T, public gutz::Counted {
@@ -75,15 +78,31 @@ namespace Symath {
   typedef BASE_T           value_type;
   typedef OPER_T           operator_type;
   typedef Sym<BASE_T>      this_type;
-  //typedef Sym            this_type;
       
   //-----------------------------------------------------------------------------
-  /// container: vector of symbol smart pointers
+  /// smart pointer typedef, vector-of typedef
   //
   typedef typename gutz::SmartPtr< this_type >   SymSP;
   typedef typename std::vector< SymSP >          SymPVec;
   typedef typename SymPVec::iterator             SymPVecIter;
       
+  //-----------------------------------------------------------------------------
+  /// Key constants, you should use these!
+  /// 1 the multiplicitve identity
+  static const Sym& one() {
+    static SymSP __one;
+    if (!__one) 
+	__one = new Sym(ONE);
+    return *__one;
+  }
+  /// 0 the additive identity, multiplicitive null
+  static const Sym& zero() {
+    static SymSP __zero;
+    if (!__zero) 
+	__zero = new Sym(ZERO);
+    return *__zero;
+  }
+
   //-----------------------------------------------------------------------------
   ///   DATA: Operator & Operands
   ///  Name/symbolic-quantity is stored in the base_type
@@ -91,6 +110,10 @@ namespace Symath {
   mutable operator_type _op;    /// operator
   mutable SymSP         _left;     /// left hand side
   mutable SymSP         _right;    /// right hand side
+
+  // TODO use _dopple to insure that unique symbols all have the same ref
+  // TODO unsed _dopple when expression changes (copy on write)
+  mutable SymSP         _dopple;   /// twin of this sym, _dopple == this if created on heap.
       
   //-----------------------------------------------------------------------------
   /// default constructor
@@ -120,7 +143,8 @@ namespace Symath {
       }
     else if ( getValue() == NEG_ONE )
       {
-	setValue(NEG);
+	_op = NEG;
+	_left = one().copyMaybe();
       }
          
   }
@@ -164,7 +188,7 @@ namespace Symath {
       {
 	setValue(NEG + ONE);
 	_op = NEG;
-	_left = new Sym(ONE);
+	_left = one().copyMaybe();
       }
     else 
       {
@@ -230,7 +254,7 @@ namespace Symath {
 
   /// Only copy this symbol if we cannot verify that it was created on the heap.
   /// shallow copy
-  SymSP maybeCopy() const 
+  SymSP copyMaybe() const 
   {
     if (_getCount() != STACK_VAR_ERROR_COUNT) 
       {
@@ -366,7 +390,7 @@ namespace Symath {
     /// -0
     if ( this->isZero() )
       {
-	return Sym(ZERO);
+	return zero();
       }
          
     /// --A -> A
@@ -374,7 +398,7 @@ namespace Symath {
       {
 	if ( _left )
 	  {
-	    return Sym( *_left );
+	    return *_left;
 	  }
 	else 
 	  {
@@ -391,7 +415,7 @@ namespace Symath {
     /// new node - , A
     return Sym( NEG + getValue(),
 		NEG,
-		this->maybeCopy() 
+		this->copyMaybe() 
 		);
   }
       
@@ -405,13 +429,13 @@ namespace Symath {
     // 1 * 1 = 1 because one is weird...
     if ( this->isOne() && s.isOne() )  
       {
-	return Sym(ONE);
+	return one();
       }
 	 
     // 0 * x = 0
     if ( this->isZero() || s.isZero() )  
       {
-	return Sym(ZERO);
+	return zero();
       }   
 
     // 1 * x
@@ -453,7 +477,7 @@ namespace Symath {
       {
 	return Sym( l + POW + base_type("2"),
 		    POW,
-		    this->maybeCopy(),
+		    this->copyMaybe(),
 		    new Sym( base_type("2") )
 		    );
       }
@@ -462,16 +486,16 @@ namespace Symath {
       {
 	return Sym( r + "*" + l, 
 		    TIMES, 
-		    s.maybeCopy(),
-		    this->maybeCopy() 
+		    s.copyMaybe(),
+		    this->copyMaybe() 
 		    );
       }
          
     /// regular old *
     return Sym( l + "*" + r, 
 		TIMES, 
-		this->maybeCopy(), 
-		s.maybeCopy() );
+		this->copyMaybe(), 
+		s.copyMaybe() );
   }
 
   //-----------------------------------------------------------------------------
@@ -485,13 +509,13 @@ namespace Symath {
   Sym operator-( const Sym &s ) const 
   {
     /// a-a=0
-    if ( *this == s )   return Sym(ZERO);
+    if ( *this == s )   return zero();
     
     /// 1-1=0 because one is weird
     // TODO not needed, handled by ==
     if ( this->isOne() && s.isOne() ) 
       {
-	return Sym(ZERO);
+	return zero();
       }
     /// 0-a=-a
     if ( this->isZero() )
@@ -523,8 +547,8 @@ namespace Symath {
     base_type expr = getValue() + MINUS + s.getValue();
     return Sym(expr, 
 	       MINUS, 
-	       this->maybeCopy(), 
-	       s.maybeCopy()
+	       this->copyMaybe(), 
+	       s.copyMaybe()
 	       ); 
   }
   //-----------------------------------------------------------------------------
@@ -543,12 +567,28 @@ namespace Symath {
       }
     if ( this->isZero() )
       {
-	return Sym(ZERO);
+	return zero();
       }
     if ( s.isZero() )
       {
 	std::cerr << "Sym operator/() dividion by zero!!!!!!!!" << std::endl;
 	return Sym(NOTANUMBER);
+      }
+
+    // -a/-b
+    if ( this->isNegateOp() && s.isNegateOp() ) 
+      {
+	return *_left / *s._left;
+      }
+    // -a/b  = -(a/b)
+    if ( this->isNegateOp() )
+      {
+	return -( *_left / s );
+      }
+    // a/-b  = -(a/b)
+    if ( s.isNegateOp() )
+      {
+	return -( *this / *s._left );
       }
          
     /// because one is weird.
@@ -556,15 +596,15 @@ namespace Symath {
       {
 	return Sym( ONE + DIV + s.getValue(), 
 		    DIV, 
-		    new Sym(ONE), 
-		    s.maybeCopy() 
+		    one().copyMaybe(), 
+		    s.copyMaybe() 
 		    );
       }
          
     return Sym( getValue() + DIV + s.getValue(), 
 		DIV, 
-		this->maybeCopy(), 
-		s.maybeCopy()
+		this->copyMaybe(), 
+		s.copyMaybe()
 		); 
   }
   //-----------------------------------------------------------------------------
@@ -584,7 +624,7 @@ namespace Symath {
     /// 0 + 0 = 0
     if ( this->isZero() && s.isZero() )
       {
-	return Sym(ZERO);
+	return zero();
       }
     
     /// 0 + s
@@ -608,7 +648,7 @@ namespace Symath {
     if ( s.isNegateOp() ) 
       {
 	// a + (-a) = 0
-	if ( *this == *s._left ) return Sym(ZERO);
+	if ( *this == *s._left ) return zero();
 	// a + (-b) = a - b
 	return (*this) - *(s._left);
       }
@@ -617,7 +657,7 @@ namespace Symath {
     if ( this->isNegateOp() ) // neg left
       {
 	// -a + a = 0
-	if ( (*_left) == s ) return Sym(ZERO);
+	if ( (*_left) == s ) return zero();
 	// -a + b = b - a
 	return s - (*_left);
       }
@@ -629,15 +669,15 @@ namespace Symath {
       {
 	return Sym( s.getValue() + PLUS + getValue(),
 		    PLUS,
-		    s.maybeCopy(),
-		    this->maybeCopy()
+		    s.copyMaybe(),
+		    this->copyMaybe()
 		    );
       }
     
     return Sym( getValue() + PLUS + s.getValue(), 
 		PLUS, 
-		this->maybeCopy(), 
-		s.maybeCopy() 
+		this->copyMaybe(), 
+		s.copyMaybe() 
 		);
   }
       
@@ -864,6 +904,7 @@ namespace Symath {
       
   //-----------------------------------------------------------------------------
   /// Print as a tree
+  /// TODO Seems broken, need to distinquish between neg an minus plus other stuff
   std::ostream& printTree(std::ostream &os, const std::string &indent = std::string("")) const
   {
     const std::string indent_sz("  ");
@@ -977,15 +1018,23 @@ namespace Symath {
   std::ostream& printInfix( std::ostream &os, const base_type &last_op = NOP ) const
   {
     bool parens = true;
-    if ( last_op == NOP || last_op == PLUS || (!_left && !_right) ) parens = false; 
-    if ( _op == TIMES && last_op == NEG ) parens = false;
-         
+    if ( last_op == NOP || last_op == PLUS || last_op == MINUS || (!_left && !_right) ) parens = false; 
+    if ( isNegateOp() ) parens = false;
+    if ( _op == TIMES || _op == DIV ) parens = false;
+    // doesn't work because we cannot distinguish neg from minus damnit
+    //if ( (last_op == PLUS && (_op == PLUS || _op == MINUS)) || 
+    //	 (last_op == MINUS && (_op == PLUS || _op == MINUS)) ) parens = false; 
+    //if ( last_op == TIMES && (_op == TIMES || _op == DIV) ) parens = false;
+    
+    // treat negate as -1 * x
+    base_type this_op = isNegateOp() ? TIMES : _op;
+
     if ( parens ) os << OPR;
     if ( isNegateOp() ) os << NEG;
-    if ( _left )  _left->printInfix( os, _op );
+    if ( _left )  _left->printInfix( os, this_op );
     if ( _op != NOP && !isNegateOp() ) os << _op;
-    else if ( !isNegateOp() )             os << getValue();
-    if ( _right ) _right->printInfix( os, _op );
+    else if ( !isNegateOp() )  os << getValue();
+    if ( _right ) _right->printInfix( os, this_op );
     if ( parens ) os << CPR;
     return os;
   }
@@ -1013,8 +1062,8 @@ namespace Symath {
   typedef Sym<>   Symbol;
 
   /// These are handy but still verbose to use outside the namespace.
-  const  Symbol   one(ONE);
-  const  Symbol   zero(ZERO);
+  const  Symbol   one = Symbol::one();
+  const  Symbol   zero = Symbol::zero();
   const  Symbol   a("a"); 
   const  Symbol   b("b"); 
   const  Symbol   c("c"); 
@@ -1046,7 +1095,7 @@ Symath::Symbol sin(const Symath::Symbol& s)
   return Symath::Symbol(Symath::SIN + Symath::OPR + s.getValue() + Symath::CPR,
 			Symath::SIN,
 			NULL,       // right associative function?? still working on it.
-			s.maybeCopy());
+			s.copyMaybe());
 }
 
 Symath::Symbol cos(const Symath::Symbol& s) 
@@ -1054,7 +1103,7 @@ Symath::Symbol cos(const Symath::Symbol& s)
   return Symath::Symbol(Symath::COS + Symath::OPR + s.getValue() + Symath::CPR,
 			Symath::COS,
 			NULL,       // right associative function?? still working on it.
-			s.maybeCopy());
+			s.copyMaybe());
 }
 
 // TODO(djmk): the rest of cmath...

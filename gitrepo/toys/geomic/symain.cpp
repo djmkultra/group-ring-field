@@ -27,7 +27,11 @@ int main( int argc, char** argv )
    cout << " -S(ONE) " << -S(ONE) << "   " << -S(ONE) * a << "  ... " << a * (-a - b) << endl;
    cout << "  -S(ONE) * a * (-a - b) = " << -S(ONE) * a * (-a - b) << endl;
 
+   cout << " add and muls " << (a+b-c+ d *(a-b+c) * c * a - b) << endl;
+   cout << " add and muls " << -(a+b-c+ d *(a-b+c) * c * a - b) << endl;
+   (a+b-c+ d *(a-b+c) * c * a - b).printTree(cout) << endl;
 
+   cout << " tree for a+b*c*c: " << endl;
    (a+b*c*c).printTree(cout) << endl;
    
    
