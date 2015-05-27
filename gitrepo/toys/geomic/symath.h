@@ -105,7 +105,7 @@ namespace Symath {
   {
     /// default behavior:
     ///   set name-string to the null-terminated cstring
-    ///   unless the values are 0, 1, -1
+    ///   unless the values are 0, 1, -1  (SKETCHY)
     if ( c_str == (char*)0 ) 
       {
 	setValue(ZERO);
@@ -186,12 +186,10 @@ namespace Symath {
   {}
       
   //-----------------------------------------------------------------------------
-  /// copy constructor
+  /// copy constructor, shallow copy
   Sym( const Sym &s ) 
-  : base_type(s), _op(s._op), _left(0), _right(0)
+  : base_type(s), _op(s._op), _left(s._left), _right(s._right)
   {
-    if ( s._left  ) _left  = s._left->clone();
-    if ( s._right ) _right = s._right->clone();
   }
       
   //-----------------------------------------------------------------------------
@@ -199,10 +197,9 @@ namespace Symath {
   ~Sym()
   {
   }
-      
-      
+           
   //-----------------------------------------------------------------------------
-  ///     CLONE : don't call new, eventually this will do...
+  ///     CLONE : DEEP COPY, use when you modify any expression.
   /// deep copy, products (can) get freaky when compounded 
   ///   example A=B*C  C=A*A (bad since A has existing trees inside!) C=A-A + A*A (worse)
   SymSP clone() const 
@@ -223,13 +220,23 @@ namespace Symath {
     //}
          
     /// recursive deep-copy( 
-    // already done in copy constructor!
-    //if ( _left )
-    //ret->_left = _left->clone();
-    //if ( _right ) 
-    // ret->_right = _right->clone();
+    if ( _left )
+      ret->_left = _left->clone();
+    if ( _right ) 
+      ret->_right = _right->clone();
          
     return ret;
+  }
+
+  /// Only copy this symbol if we cannot verify that it was created on the heap.
+  /// shallow copy
+  SymSP maybeCopy() const 
+  {
+    if (_getCount() != STACK_VAR_ERROR_COUNT) 
+      {
+	return SymSP( const_cast<Sym*>(this) );
+      }
+    return SymSP( new Sym( *this ) );
   }
       
   //-----------------------------------------------------------------------------
@@ -238,10 +245,12 @@ namespace Symath {
   { 
     setValue(s); 
     _op = s._op;
-    if (s._left)  _left = s._left->clone();
-    else _left = 0;
-    if (s._right) _right = s._right->clone();
-    else _right = 0;
+    _left = s._left;
+    _right = s._right;
+    //if (s._left)  _left = s._left->clone();
+    //else _left = 0;
+    //if (s._right) _right = s._right->clone();
+    //else _right = 0;
     return *this;
   }
       
@@ -382,7 +391,7 @@ namespace Symath {
     /// new node - , A
     return Sym( NEG + getValue(),
 		NEG,
-		this->clone() 
+		this->maybeCopy() 
 		);
   }
       
@@ -444,7 +453,7 @@ namespace Symath {
       {
 	return Sym( l + POW + base_type("2"),
 		    POW,
-		    this->clone(),
+		    this->maybeCopy(),
 		    new Sym( base_type("2") )
 		    );
       }
@@ -453,20 +462,20 @@ namespace Symath {
       {
 	return Sym( r + "*" + l, 
 		    TIMES, 
-		    s.clone(), 
-		    this->clone() 
+		    s.maybeCopy(),
+		    this->maybeCopy() 
 		    );
       }
          
     /// regular old *
     return Sym( l + "*" + r, 
 		TIMES, 
-		this->clone(), 
-		s.clone() );
+		this->maybeCopy(), 
+		s.maybeCopy() );
   }
 
   //-----------------------------------------------------------------------------
-  //
+  // We should disallow sideffects... really breaks down the copying
   Sym &operator*=( const Sym &s )
   {
     return *this = (*this) * s;;
@@ -514,11 +523,12 @@ namespace Symath {
     base_type expr = getValue() + MINUS + s.getValue();
     return Sym(expr, 
 	       MINUS, 
-	       this->clone(), 
-	       s.clone()
+	       this->maybeCopy(), 
+	       s.maybeCopy()
 	       ); 
   }
   //-----------------------------------------------------------------------------
+  // TODO disallow sideffects
   Sym &operator-=( const Sym &s )
   {
     return *this = (*this) - s;
@@ -547,17 +557,18 @@ namespace Symath {
 	return Sym( ONE + DIV + s.getValue(), 
 		    DIV, 
 		    new Sym(ONE), 
-		    s.clone() 
+		    s.maybeCopy() 
 		    );
       }
          
     return Sym( getValue() + DIV + s.getValue(), 
 		DIV, 
-		this->clone(), 
-		s.clone() 
+		this->maybeCopy(), 
+		s.maybeCopy()
 		); 
   }
   //-----------------------------------------------------------------------------
+  /// TODO disallow side effects
   Sym &operator/=( const Sym &s )
   {
     return *this = (*this) / s;
@@ -618,15 +629,15 @@ namespace Symath {
       {
 	return Sym( s.getValue() + PLUS + getValue(),
 		    PLUS,
-		    s.clone(),
-		    this->clone()
+		    s.maybeCopy(),
+		    this->maybeCopy()
 		    );
       }
     
     return Sym( getValue() + PLUS + s.getValue(), 
 		PLUS, 
-		this->clone(), 
-		s.clone() 
+		this->maybeCopy(), 
+		s.maybeCopy() 
 		);
   }
       
@@ -1035,7 +1046,7 @@ Symath::Symbol sin(const Symath::Symbol& s)
   return Symath::Symbol(Symath::SIN + Symath::OPR + s.getValue() + Symath::CPR,
 			Symath::SIN,
 			NULL,       // right associative function?? still working on it.
-			s.clone());
+			s.maybeCopy());
 }
 
 Symath::Symbol cos(const Symath::Symbol& s) 
@@ -1043,7 +1054,7 @@ Symath::Symbol cos(const Symath::Symbol& s)
   return Symath::Symbol(Symath::COS + Symath::OPR + s.getValue() + Symath::CPR,
 			Symath::COS,
 			NULL,       // right associative function?? still working on it.
-			s.clone());
+			s.maybeCopy());
 }
 
 // TODO(djmk): the rest of cmath...
