@@ -113,7 +113,9 @@ namespace Symath {
 
   // TODO use _dopple to insure that unique symbols all have the same ref
   // TODO unsed _dopple when expression changes (copy on write)
-  mutable SymSP         _dopple;   /// twin of this sym, _dopple == this if created on heap.
+  /// twin of this sym, allows us to have unique symbols in an expression,
+  /// rather than copies.
+  mutable SymSP         _doppleganger;   
       
   //-----------------------------------------------------------------------------
   /// default constructor
@@ -206,13 +208,14 @@ namespace Symath {
        const operator_type & op,                ///< operation (intrisic symbol-values are NOP)
        SymSP                 left,              ///< left operand (0 if not relevant)
        SymSP                 right = SymSP(0) ) ///< right operand (0 if not relevant) 
-  : base_type(val), _op(op), _left(left), _right(right) 
+  : base_type(val), _op(op), _left(left), _right(right), _doppleganger(0)
   {}
       
   //-----------------------------------------------------------------------------
   /// copy constructor, shallow copy
   Sym( const Sym &s ) 
-  : base_type(s), _op(s._op), _left(s._left), _right(s._right)
+  : base_type(s), _op(s._op), _left(s._left), _right(s._right), 
+    _doppleganger(s._doppleganger)
   {
   }
       
@@ -222,45 +225,12 @@ namespace Symath {
   {
   }
            
-  //-----------------------------------------------------------------------------
-  ///     CLONE : DEEP COPY, use when you modify any expression.
-  /// deep copy, products (can) get freaky when compounded 
-  ///   example A=B*C  C=A*A (bad since A has existing trees inside!) C=A-A + A*A (worse)
-  SymSP clone() const 
+  /// Only copy this symbol once. Save the copy with the symbol so it can be reused.
+  SymSP& copyMaybe() const 
   {
-    SymSP ret;
-    ///    TODO: got pretty close to hacking smartptr and counted into detecting 
-    ///          stack versus heap variable creation.  you should ever point to stack objs
-    ///
-    //if ( gutz::Counted::isStackVar() ) ///< never been owed by a smart-ptr, likely stack obj
-    //{
-    /// because smart-pointers are self-deleteing, and heap detection is pretty unreliable
-    ///   when in doubt. new
-    ret = new Sym( *this );
-    //}
-    //else                                    ///< already referenced, no need to copy new                                  
-    //{
-    //   ret = const_cast<Sym*>(this);  
-    //}
-         
-    /// recursive deep-copy( 
-    if ( _left )
-      ret->_left = _left->clone();
-    if ( _right ) 
-      ret->_right = _right->clone();
-         
-    return ret;
-  }
-
-  /// Only copy this symbol if we cannot verify that it was created on the heap.
-  /// shallow copy
-  SymSP copyMaybe() const 
-  {
-    if (_getCount() != STACK_VAR_ERROR_COUNT) 
-      {
-	return SymSP( const_cast<Sym*>(this) );
-      }
-    return SymSP( new Sym( *this ) );
+    if (!_doppleganger)
+      _doppleganger = new Sym( *this );
+    return _doppleganger;
   }
       
   //-----------------------------------------------------------------------------
@@ -271,10 +241,7 @@ namespace Symath {
     _op = s._op;
     _left = s._left;
     _right = s._right;
-    //if (s._left)  _left = s._left->clone();
-    //else _left = 0;
-    //if (s._right) _right = s._right->clone();
-    //else _right = 0;
+    _doppleganger = s._doppleganger;
     return *this;
   }
       
@@ -910,16 +877,12 @@ namespace Symath {
     const std::string indent_sz("  ");
          
     /// negavie node, I want negs printed in-line  -*  or - A * B
-    if ( _op == NEG )
+    if ( this->isNegateOp() )
       {
-	if ( ! _left ) {
-	  std::cout << "wtf" ;
-	  return os;
-	}
 	Sym *sym = _left;
             
 	/// double NEG??  This should NOT happen if tree was built properly!
-	if ( sym->_op == NEG )
+	if ( sym->isNegateOp() )
 	  {
 	    /// yes double neg at a leaf node
 	    if (  sym->_left && sym->_left->isLeaf()  && !sym->_right )
@@ -995,23 +958,44 @@ namespace Symath {
             
       } /// END IF NEG NODE
          
-    /// leaf operation  print out inline:   A * B  
-    if ( _op != NOP  && _right && _right->isLeaf() && _left && _left->isLeaf() )
+    /// leaf operation  print out inline:   A * B, Sin x, x ^ y etc...  
+    if ( _op != NOP  && 
+	 (!_right || (_right && _right->isLeaf())) &&  // maybe right 
+	 (!_left || (_left && _left->isLeaf())) )  // maybe left
       {
-	os << indent << " ( " << (*_left) << " " << _op << " " << (*_right) << " )\n";
+	os << indent << "( ";
+	if ( _left )
+	  os << (*_left) << " ";
+	os << _op;
+	if ( _right )
+	  os << " " << (*_right) << " )\n";
 	return os;
       }
-         
+	 
+    // print right tree.
     if ( _right )
       {
 	_right->printTree( os, indent + indent_sz );
-	//os << "\n";
       }
-    if ( _op != NOP )  os << indent << _op << "\n";
-    else if ( !base_type::empty() ) os << indent << (*this) << "\n";
-    else os << indent << "1\n";
+
+    if ( _op != NOP ) // print operator
+      {
+	os << indent << _op << "\n";
+      }
+    else if ( !base_type::empty() )  // not operator, must be value_type
+      {
+	os << indent << (*this) << "\n";
+      }
+    else // One, I guess?
+      {
+	os << indent << "<1>\n";
+      }
+
     if ( _left  )
-      _left->printTree( os, indent + indent_sz );
+      {
+	_left->printTree( os, indent + indent_sz );
+      }
+
     return os;
   }
       
@@ -1021,12 +1005,8 @@ namespace Symath {
     if ( last_op == NOP || last_op == PLUS || last_op == MINUS || (!_left && !_right) ) parens = false; 
     if ( isNegateOp() ) parens = false;
     if ( _op == TIMES || _op == DIV ) parens = false;
-    // doesn't work because we cannot distinguish neg from minus damnit
-    //if ( (last_op == PLUS && (_op == PLUS || _op == MINUS)) || 
-    //	 (last_op == MINUS && (_op == PLUS || _op == MINUS)) ) parens = false; 
-    //if ( last_op == TIMES && (_op == TIMES || _op == DIV) ) parens = false;
     
-    // treat negate as -1 * x
+    // treat negate as -1 * x so we don't confuse neg and minus
     base_type this_op = isNegateOp() ? TIMES : _op;
 
     if ( parens ) os << OPR;
