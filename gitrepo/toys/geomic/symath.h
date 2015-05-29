@@ -5,10 +5,11 @@
 #define __SYMBOLIC_MATHS_H
 
 
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <map>
-#include <vector>
+#include <list>
 #include <string>
 #include <limits>
 #include "vec.h"
@@ -80,10 +81,10 @@ namespace Symath {
   typedef Sym<BASE_T>      this_type;
       
   //-----------------------------------------------------------------------------
-  /// smart pointer typedef, vector-of typedef
+  /// smart pointer typedef, list-of typedef
   //
   typedef typename gutz::SmartPtr< this_type >   SymSP;
-  typedef typename std::vector< SymSP >          SymPVec;
+  typedef typename std::list< SymSP >            SymPVec;
   typedef typename SymPVec::iterator             SymPVecIter;
       
   //-----------------------------------------------------------------------------
@@ -319,7 +320,7 @@ namespace Symath {
   }
   static bool isZero(const base_type& val)
   {
-    return val == ZERO || val == NEG_ZERO;
+    return (!val.empty()) && (val == ZERO || val == NEG_ZERO);
   }
 
   // == "-"
@@ -373,12 +374,6 @@ namespace Symath {
 	  }
       }
 
-    // -(a-b) -> (b-a)
-    if ( this->isMinusOp() )
-      {
-	return *_right - *_left;
-      }
-    
     /// new node - , A
     return Sym( NEG + getValue(),
 		NEG,
@@ -390,9 +385,6 @@ namespace Symath {
   /// this * s  MUL
   Sym operator*( const Sym &s ) const   ///< MULTIPLICATION
   {  
-    base_type l = getValue();
-    base_type r = s.getValue();
-         
     // 1 * 1 = 1 because one is weird...
     if ( this->isOne() && s.isOne() )  
       {
@@ -427,18 +419,7 @@ namespace Symath {
 	std::cout << " baaaaad * " << (*this) << " * " << s << std::endl;
       }
          
-    // Left only is negate, keep negate above, (-l) * r = -(l*r)
-    if ( this->isNegateOp() )
-      {
-	return -( (*_left) * s );
-      }
-
-    //right hand side is negate, keep negate above l * (-r) = -(l*r)
-    if ( s.isNegateOp() ) 
-      { 
-	return -( (*this) * (*s._left) );
-      }
-         
+#if 0         
     /// TODO(djmk) this is actuallly broken we can't do powers greather than 2...
     if ( *this == s )  
       {
@@ -448,18 +429,10 @@ namespace Symath {
 		    new Sym( base_type("2") )
 		    );
       }
-         
-    if ( s < (*this) )  // swap order of operands
-      {
-	return Sym( r + "*" + l, 
-		    TIMES, 
-		    s.copyMaybe(),
-		    this->copyMaybe() 
-		    );
-      }
-         
+#endif    
+
     /// regular old *
-    return Sym( l + "*" + r, 
+    return Sym( this->getValue() + "*" + s.getValue(), 
 		TIMES, 
 		this->copyMaybe(), 
 		s.copyMaybe() );
@@ -469,7 +442,7 @@ namespace Symath {
   // We should disallow sideffects... really breaks down the copying
   Sym &operator*=( const Sym &s )
   {
-    return *this = (*this) * s;;
+    return *this = (*this) * s;
   }
       
   //-----------------------------------------------------------------------------
@@ -494,25 +467,13 @@ namespace Symath {
       {
 	return *this;
       }
-    /// (-a) - (-b) = b - a
-    /// TODO this could be a problem for cannonical form.
-    if ( this->isNegateOp() && s.isNegateOp() ) 
-      {
-	return *s._left - *_left;
-      }
     /// a--b = a+b
     if ( s.isNegateOp() )
       {
 	return (*this) + (*s._left); 
       }
-    /// -a-b = -(a+b)
-    if ( this->isNegateOp() ) 
-      {
-	return -((*_left) + s);
-      }
 
-    base_type expr = getValue() + MINUS + s.getValue();
-    return Sym(expr, 
+    return Sym(getValue() + MINUS + s.getValue(), 
 	       MINUS, 
 	       this->copyMaybe(), 
 	       s.copyMaybe()
@@ -605,19 +566,12 @@ namespace Symath {
 	return *this;
       }
    
-    /// Both negates : -l + -r = -(l + r)
-    if ( this->isNegateOp() && s.isNegateOp() )
-      {
-	return -( *(this->_left) + *(s._left) );
-      }
  
     // neg right, check for cancellation
     if ( s.isNegateOp() ) 
       {
 	// a + (-a) = 0
 	if ( *this == *s._left ) return zero();
-	// a + (-b) = a - b
-	return (*this) - *(s._left);
       }
 
     // neg left check for cancellation
@@ -625,21 +579,9 @@ namespace Symath {
       {
 	// -a + a = 0
 	if ( (*_left) == s ) return zero();
-	// -a + b = b - a
-	return s - (*_left);
       }
          
     /// Both sides are relevant
-
-    /// always store in ascending sort order (for communitive ops anyway)
-    if ( s < (*this) )
-      {
-	return Sym( s.getValue() + PLUS + getValue(),
-		    PLUS,
-		    s.copyMaybe(),
-		    this->copyMaybe()
-		    );
-      }
     
     return Sym( getValue() + PLUS + s.getValue(), 
 		PLUS, 
@@ -669,38 +611,101 @@ namespace Symath {
     if ( getValue() < iss.str() ) return true;
     return false; 
   }
+
   //-----------------------------------------------------------------------------
   // usefull for a cannonical form, but what is it?
   bool operator<( const Sym &s ) const
   {
+    // ignore negates (for now)
+    if ( this->isNegateOp() )
+      {
+	if ( s.isNegateOp() )
+	  {
+	    return *(this->_left) < *(s._left);
+	  }
+	// -a < a
+	if ( *(this->_left) == s ) 
+	  {
+	    return true;
+	  }
+	return *(this->_left) < s;
+      }
+    if ( s.isNegateOp() )
+      {
+	// a > -a
+	if ( *this == *(s._left) ) 
+	  {
+	    return false;
+	  }
+	return *this < *(s._left);
+      }
+
+    // both leafs
+    if ( this->isLeaf() && s.isLeaf() )
+      return this->getValue() < s.getValue();
+
+    // just left is leaf
+    if ( isLeaf() ) return true;
+    // just right is leaf
+    if ( s.isLeaf() ) return false;
+
+    // non-operators < operators (not sure what the conditions are to get here...)
+    if ( _op != NOP && s._op == NOP ) return false;
+    if ( _op == NOP && s._op != NOP ) return true;
+
+    // two operators
+    if ( _op != NOP && s._op != NOP )
+      {
+	if ( _op < s._op ) return true;
+	if ( s._op < _op ) return false;
+	
+	// operators must be the same, compare operands
+	if ( _left && s._left ) 
+	  {
+	    if ( *_left < *s._left ) return true;
+	    if ( *s._left < *_left ) return false;
+	  }
+	if ( _right && s._right ) 
+	  {
+	    if ( *_right < *s._right ) return true;
+	    if ( *s._right < *_right ) return false;
+	  }
+	// everything the same!
+	return false;
+      }
+    // both are non-ops
     return getValue() < s.getValue();
   }
 
   //-----------------------------------------------------------------------------
+  // tests if the two expressions are EXACTLY the same, not equivalent 
   bool operator==( const Sym &s ) const 
   {
-    // would be fast but unreliable to use
-    // return getValue() == s.getValue()
     // because 0 and 1 are special...?
     if ( this->isOne() && s.isOne() ) return true;
     if ( this->isZero() && s.isZero() ) return true;
 
-    if (!_left & !_right) // must be a variable
+    if (!_left && !_right) // must be a variable
       {
 	return getValue() == s.getValue();
       }
+    
     if ( _op != s._op ) return false;
+    
     if ( _left )
       {
 	if (!s._left) return false;
 	if (!(*_left == *s._left)) return false;
       }
     else if (s._left) return false;
+
     if ( _right )
       {
 	if (!s._right) return false;
 	if (!(*_right == *s._right)) return false; 
       }
+    else if (s._right) return false;
+
     return true; 
   }
   //-----------------------------------------------------------------------------
@@ -718,252 +723,321 @@ namespace Symath {
   bool isLeaf() const { return (_right == 0 && _left == 0 ); }
       
   //-----------------------------------------------------------------------------
-  void additiveSubexps( SymPVec &spv, int level = 0 )
-  {
-    if ( _op != PLUS )
+  // distribute products through sums, make sure all +/- are above * in tree
+  // (a + b) * (c + d) = ac + bc + ad + bd (sum of products only)
+  Sym distribute() const {
+    if ( _op == TIMES )  // l*r
       {
-	spv.push_back( this );
-	if ( ! level )
-	  return;
-	/// todo extract deeper levels
+	Sym left = _left->distribute();
+	
+	if ( left._op == PLUS )
+	  return ((*left._left * *_right) + (*left._right * *_right)).distribute();
+	
+	if ( left.isMinusOp() )
+	  return ((*left._left * *_right) - (*left._right * *_right)).distribute();
+
+	Sym right = _right->distribute();
+
+	if ( right._op == PLUS ) 
+	  return ((left * *right._left) + (left * *right._right)).distribute();
+
+	if ( right.isMinusOp() ) 
+	  return ((left * *right._left) - (left * *right._right)).distribute();
+
+	// We tried, did left, did right, but no luck, done.
+	return *this;
       }
-    if ( _left  ) _left->additiveSubexps( spv );
-    if ( _right ) _right->additiveSubexps( spv );
+
+    if ( _left && _right )
+      return Sym(getValue(), _op, 
+		 _left->distribute().copyMaybe(), _right->distribute().copyMaybe());
+    if ( _left )
+      return Sym(getValue(), _op, _left->distribute().copyMaybe());
+    if ( _right )
+      return Sym(getValue(), _op, NULL, _right->distribute().copyMaybe());
+
+    return *this;
   }
-      
-  //-----------------------------------------------------------------------------
-  /// if any nodes _op == ZERO, apply them
-  void cancelZeros()
+
+  /// Remove all subtractions by negating, push all negates down to non-PLUS nodes.
+  /// -(a + (b*a - c)) -> (-a) + ((-b)*a + c)
+  Sym makeAdditive() const 
   {
-         
-    /// This node is zero  0
-    if ( this->_op == ZERO || getValue() == ZERO )
+    if ( !_left && !_right )
+      return *this;
+
+    // a - b = a + (-b)
+    if ( isMinusOp() )
       {
-	nuke();
-	this->_op = ZERO;
+	return _left->makeAdditive() + (-*_right).makeAdditive();
+      }
+
+    // -(e)
+    if ( isNegateOp() ) 
+      {
+	// -(a+b) -> (-a) + (-b)
+	if ( _left->_op == PLUS )
+	  {
+	    return ((-*_left->_left).makeAdditive() + (-*_left->_right).makeAdditive());
+	  }
+	// -(a-b) -> (-a) + b
+	if ( _left->isMinusOp() )
+	  {
+	    return ((-*_left->_left).makeAdditive() + *_left->_right).makeAdditive();
+	  }
+      }
+
+    return Sym(getValue(), _op,
+	       _left ? _left->makeAdditive().copyMaybe() : NULL,
+	       _right ? _right->makeAdditive().copyMaybe() : NULL);
+  }
+
+  //-----------------------------------------------------------------------------
+  // fills vector with expressions that sum from top of tree
+  // works best if you call distribute before gathering subexpressions
+  void getAdditiveSubexps(SymPVec* spv) const
+  {
+    // a-b -> a + (-b) 
+    if ( isMinusOp() ) 
+      {
+	_left->getAdditiveSubexps(spv);
+	// negate right, then traverse
+	(-*_right).getAdditiveSubexps(spv);
 	return;
       }
-         
-    if ( _left == 0 )  ///< quick check for leafyness
+    // -(a+b) -> (-a) + (-b)
+    if ( isNegateOp() && (_left->_op == PLUS || _left->isMinusOp()) ) 
       {
+	// we are a negate op, see if it helps to "makeAdditive"
+	this->makeAdditive().getAdditiveSubexps(spv);
 	return;
       }
-         
-    /// negate zero  -0
-    if ( _op == NEG && _left->_op == ZERO )
+    if ( _op != PLUS )  // non sum node, add this subexpression
       {
-	clear();
-	_op = ZERO;
+	spv->push_back( this->copyMaybe() );
 	return;
       }
-         
-    /// multiply with a zero  0 * r or l * 0
-    if ( _op == TIMES && (_left->_op == ZERO || ( _right && _right->_op == ZERO)))
+    if ( _left  ) _left->getAdditiveSubexps( spv );
+    if ( _right ) _right->getAdditiveSubexps( spv );
+  }
+
+  // returns true if there was a negation.
+  // works best if you call "makeAdditive" first
+  bool getMultiplicitiveSubexps(SymPVec *spv) const
+  {
+    bool flip_sign = false;
+    if ( isNegateOp() ) 
       {
-	nuke();
-	setValue(ZERO);
-	_op = ZERO;
+	flip_sign = !flip_sign;
+	if (_left->getMultiplicitiveSubexps( spv ))
+	  flip_sign = !flip_sign;
+	return flip_sign;
       }
-    /// add with left 0     0 + r
-    else if ( _op == PLUS && (_left->_op == ZERO && (_right && _right->_op != ZERO)) )
+    if ( _op != TIMES )
       {
-	_left->nuke();
-	_left=0;
-	Sym *save_right = _right;
-	(*this) = (*save_right);
+	spv->push_back( this->copyMaybe() );
+	return flip_sign;
       }
-    /// add with right 0     a + 0
-    else if ( _op == PLUS && (_left->_op != ZERO && (_right && _right->_op == ZERO)) )
-      {
-	_right->nuke();
-	Sym *left = _left;
-	_right = 0;
-	(*this) = (*left);
-      }   
-    /// add with both 0      0 + 0
-    else if ( _op == PLUS && (_left->_op == ZERO && (_right && _right->_op == ZERO)) )
-      {
-	nuke();
-	setValue(ZERO);
-	_op = ZERO;
+    if ( _left ) 
+      if (_left->getMultiplicitiveSubexps( spv ))
+	flip_sign = !flip_sign;
+    if ( _right ) 
+      if (_right->getMultiplicitiveSubexps( spv ))
+	flip_sign = !flip_sign;
+    return flip_sign;
+  }
+
+  //--------------------------------------------------------------
+  // Returns an expression that is the sum of multiplies, with all 
+  // expressions sorted.  If two different but equivalent expressions
+  // are placed in normal form, we should be able to detect equivalence
+  // a*(a-b) + (a+b)(a+b) + c = c + -a*b + a*a + a*a + a*b + a*b + b*b
+  Sym normalForm(bool distrib = true) const {
+    if ( isLeaf() )
+      return *this;
+
+    struct SymPComp {
+      bool operator() (const SymSP& a, const SymSP& b) {
+	return (*a) < (*b);
       }
-    /// TODO: sub, div, etc....
-         
-    ///    RECURSION    ---------------------------------
-    if ( _left  ) _left->cancelZeros();
-    if ( _right ) _right->cancelZeros();
-    /// -------------------------------------------------
-         
-    /// multi with a zerp or nothing   0/nil/a * 0/nil/a
-    if ( _op == TIMES && ( (!_left || _left->_op == ZERO) || ( !_right || _right->_op == ZERO) ) )
+    } sym_ptr_comp;
+
+    // if |distrib| is false, we are probably inside a recursion, it's already done.
+    // Distribute terms, make sum of products
+    Sym norm = distrib ? this->distribute() : (*this);
+
+    // Gather all additive subexpressions into a flat list
+    SymPVec addexps;
+    norm.getAdditiveSubexps(&addexps);
+    
+    for (auto aiter = addexps.begin(), aend = addexps.end(); aiter != aend; ++aiter)
       {
-	nuke();
-	setValue( ZERO );
-	_op = ZERO;
+	// for each +subexp, gather multiplicitve subexpressions into flat list
+	SymPVec multexps;
+	bool neg = (*aiter)->getMultiplicitiveSubexps(&multexps);
+	if (multexps.size() > 1)  // more than one subexpression
+	  {
+	    for (auto miter = multexps.begin(), mend = multexps.end(); miter != mend; ++miter)
+	      {
+		// recurse, normalize these sub expressions first
+		(*miter) = (*miter)->normalForm(false).copyMaybe();
+	      }
+	    // sort * subexps
+	    multexps.sort(sym_ptr_comp);
+	    // rebuild multiplicitive expression tree from normalized subexps
+	    Sym mexp(one());
+	    for (auto miter = multexps.begin(), mend = multexps.end(); miter != mend; ++miter)
+	      {
+		mexp = mexp * *(*miter);
+	      }
+	    // don't forget to return the negative we stripped off
+	    if ( neg )
+	      mexp = -mexp;
+	    (*aiter) = mexp.copyMaybe();
+	  }
+	else // only one expression, do not recurse, put the negative back tho
+	  {
+	    if (neg)
+	      (*multexps.begin()) = (-*(*multexps.begin())).copyMaybe();
+	  }
       }
-    /// add with zeros or nothings     0/nil + 0/nil
-    else if ( _op == PLUS && ( (!_left || _left->_op == ZERO) && (!_right || _right->_op == ZERO)) )
+    // sort additive subexpressions
+    addexps.sort(sym_ptr_comp);
+    // rebuild entire expression
+    Sym aexp(zero());
+    for (auto aiter = addexps.begin(), aend = addexps.end(); aiter != aend; ++aiter)
       {
-	nuke();
-	setValue(ZERO);
-	_op = ZERO;
+	aexp = aexp + *(*aiter);
       }
-         
-         
+    return aexp;
   }
       
   //-----------------------------------------------------------------------------
   /// search for sub-expressions that sum to zero
-  Sym &cancelAdditions()
+  /// normalize_form = true applies transformations to stadardize the expression form
+  Sym cancelAdditions(bool normalize_form = true) const
   {
-    if ( _op != PLUS ) return *this;
-    SymPVec subexps;
-    /// brab all sub expression connected by addition (commute trivially)
-    ///   recursive
-    additiveSubexps( subexps );
-         
-    /// double loop checking to see if any will cancel each other
-    ///   if they do, set the _op to Zero...
-    for ( SymPVecIter spviA = subexps.begin(); spviA != subexps.end(); ++spviA )
+    Sym std_form = normalize_form ? this->normalForm() : (*this);
+
+    // no additive subexpressions to cancel at this level, recurse on subexpressions.
+    if ( ! (std_form._op == PLUS || std_form.isMinusOp()) )
       {
-	if ( (*spviA)->_op == ZERO )
-	  continue;
-            
-	for ( SymPVecIter spviB = spviA + 1; spviB != subexps.end(); ++spviB )
+	if (std_form._left || std_form._right)  // carefull to never copy leaf nodes.
+	  return Sym(std_form.getValue(), std_form._op, 
+		     std_form._left ? std_form._left->cancelAdditions().copyMaybe() : NULL,
+		     std_form._right ? std_form._right->cancelAdditions().copyMaybe() : NULL);
+	return *this;
+      }
+
+    SymPVec subexps;
+    
+    /// distribute and grab all sub expression connected by addition (commute trivially)    
+    std_form.getAdditiveSubexps( &subexps );
+         
+    /// double loop checking to see if any subexpression will cancel each others
+    ///   if they do, remove both from list
+    SymPVecIter spviA = subexps.begin();
+    while ( spviA != subexps.end() ) 
+      {
+	if ( !(*spviA) ) std::cout << " BOOM " << std::endl;
+	if ( (*spviA)->isZero() )  // already zero, remove
 	  {
-	    /// right is 0
-	    if ( (*spviB)->_op == ZERO )
-	      continue;
-               
-	    if ( (*spviA)->_op == NEG && (*spviB)->_op != NEG )
+	    subexps.erase(spviA++);
+	  }
+	bool increment = true;
+	SymPVecIter spviB = spviA;
+	++spviB;
+	while ( spviB != subexps.end() ) 
+	  {
+	    if ( !(*spviB) ) std::cout << " BOMB " << std::endl;
+	    /// is 0, remove
+	    if ( (*spviB)->isZero() )
 	      {
-		///      -left + right = 0
-		if (  base_type(*(*spviA)).substr(1) == base_type(*(*spviB)) )
-                  {
-		    (*spviA)->_op = ZERO;
-		    (*spviA)->setValue( ZERO );
-		    (*spviB)->_op = ZERO;
-		    (*spviB)->setValue( ZERO );
+		subexps.erase(spviB++);
+		continue;
+	      }
+	    ///  -left + right
+	    if ( ((*spviA)->isNegateOp() && !(*spviB)->isNegateOp()) )
+	      {
+		if ( (*(*spviA)->_left) == (*(*spviB)) )
+		  {  // CANCEL, nuke both
+		    increment = false;
+		    subexps.erase(spviB);  // you MUST delete this one first
+		    subexps.erase(spviA++); // so this increment works
+		    break;
+		  }
+	      }
+	    else if ( !(*spviA)->isNegateOp() && (*spviB)->isNegateOp() )
+	      {  //      left + -right = 0
+		if ( *(*spviA) == *(*spviB)->_left )
+                  {  // CANCEL, nuke
+		    increment = false;
+		    subexps.erase(spviB);   // same as above
+		    subexps.erase(spviA++);
+		    break;
                   }
 	      }
-	    else if ( (*spviA)->_op != NEG && (*spviB)->_op == NEG )
-	      {
-		///      left + -right = 0
-		if ( base_type(*(*spviA)) == base_type(*(*spviB)).substr(1) )
-                  {
-		    (*spviA)->_op = ZERO;
-		    (*spviA)->setValue( ZERO );
-		    (*spviB)->_op = ZERO;
-		    (*spviB)->setValue( ZERO );
-                  }
-	      }
-	    /// otherwise no cancellation 
-	  } /// end for B
-      } /// end for A
-         
-    /// if any _op was set to zero, collapse the tree underneath, and fix addition and multi with zeros
-    ///  recursive
-    cancelZeros();
-         
-    return *this;
-         
+	    ++spviB;
+	  } /// end while B
+	//std::cout << std::endl;
+	if (increment) 
+	  ++spviA;
+      } /// end while A
+
+    // Assemble new expression.
+    Sym sym(zero());
+    for (SymPVecIter iter = subexps.begin(), end = subexps.end(); iter != end; ++iter)
+      {
+	// recurse on sub-expressions, no need to normalize again.
+	Sym canceled = (*iter)->cancelAdditions(false);
+	sym = sym + canceled;
+      }
+
+    return sym;
   }
       
   //-----------------------------------------------------------------------------
   /// Print as a tree
-  /// TODO Seems broken, need to distinquish between neg an minus plus other stuff
-  std::ostream& printTree(std::ostream &os, const std::string &indent = std::string("")) const
+  // helper, gets the right indent for any given value/operator name length
+  inline std::string getIndent(int indent) const 
   {
-    const std::string indent_sz("  ");
-         
-    /// negavie node, I want negs printed in-line  -*  or - A * B
-    if ( this->isNegateOp() )
+    return std::string(indent, ' ');
+  }
+
+  std::ostream& printTree(std::ostream &os, int indent = 0) const
+  {
+    /// negate node, or unitary func I want negs printed in-line  -*  or - A * B
+    if ( this->_op != NOP && 
+	 ((this->_left && !this->_right) || (this->_right && !this->_left))  )
       {
-	Sym *sym = _left;
-            
-	/// double NEG??  This should NOT happen if tree was built properly!
-	if ( sym->isNegateOp() )
+	Sym* sym = _left ? _left : _right;
+	std::string str(getIndent(indent) + _op + " ");
+	if ( sym->_op != NOP ) // operator
 	  {
-	    /// yes double neg at a leaf node
-	    if (  sym->_left && sym->_left->isLeaf()  && !sym->_right )
-	      {
-		os << indent << "--+" << *(sym->_left) << "\n";
-		return os;
-	      }
-	    /// subtraction op miss named
-	    else if ( sym->_left && sym->_right )
-	      {
-		if ( sym->_left->isLeaf() && sym->_right->isLeaf() )
-                  {
-		    os << indent << *(sym->_left) << "+--+" << *(sym->_right) << "\n";
-                  }
-		else 
-                  {
-		    sym->_left->printTree(os,indent+indent_sz);
-		    os << indent << "+-- \n";
-		    sym->_right->printTree(os,indent+indent_sz);
-                  }
-	      }
-	    /// double negative expression
-	    else 
-	      {   
-		os << indent << _op << "?" << sym->_op << " [" << (*this) << "] vs \n";
-		os << indent << _op << "?" << sym->_op << " [" << (*sym) << "] \n";
-		if ( sym->_left )
-                  {
-		    sym->_left->printTree(os,indent+indent_sz);
-                     
-		    /// ah ha! we are miss named negation!
-		    if (_right)
-		      {
-                        os << indent <<  "-?\n";
-                        _right->printTree(os,indent+indent_sz);  
-		      }
-                  }
-		else 
-                  {
-		    os << " SUPER BAD " << (*sym) <<  "\n";
-                  }
-                  
-	      }
-	    return os;
-	  } /// END DOULBE NEGATIVE
-            
-            /// basic leaf neg
-	if ( sym->isLeaf() )
-	  {
-	    os << indent << "-" << (*sym) << "\n";
-	    return os;
-	  } 
-            
-	/// operation leaf neg:  - A * B
-	if ( sym->_op != NOP && sym->_left && sym->_left->isLeaf() && sym->_right && sym->_right->isLeaf() )
-	  {
-	    os << indent << "-( " << *(sym->_left) << " " << sym->_op << " " << *(sym->_right) << " )\n";
-	    return os;
+	    str += sym->_op;
 	  }
-	/// operation node neg
-	if (sym->_op != NOP && sym->_op != NEG )
+	else if ( !sym->getValue().empty() )
 	  {
-	    if ( sym->_right ) sym->_right->printTree( os, indent + indent_sz + indent_sz );
-	    os << indent << "-" << sym->_op << "\n";
-	    if ( sym->_left  ) sym->_left->printTree( os, indent + indent_sz + indent_sz);
-	    return os;
+	    str += sym->getValue();
 	  }
-	else /// what else could there be???
+	else  // one I guess? 
 	  {
-	    os << indent << "-? (" << (*this) << ")\n";
-	    return os;
+	    str += "<1>";
 	  }
-            
+
+	if (sym->_left) sym->_left->printTree(os, str.length() + 1);
+	os << str << "\n";
+	if (sym->_right) sym->_right->printTree(os, str.length() + 1);
+	return os;
       } /// END IF NEG NODE
-         
+
+#if 0         
     /// leaf operation  print out inline:   A * B, Sin x, x ^ y etc...  
     if ( _op != NOP  && 
 	 (!_right || (_right && _right->isLeaf())) &&  // maybe right 
 	 (!_left || (_left && _left->isLeaf())) )  // maybe left
       {
-	os << indent << "( ";
+	os << getIndent(indent) << "( ";
 	if ( _left )
 	  os << (*_left) << " ";
 	os << _op;
@@ -971,29 +1045,33 @@ namespace Symath {
 	  os << " " << (*_right) << " )\n";
 	return os;
       }
-	 
-    // print right tree.
-    if ( _right )
-      {
-	_right->printTree( os, indent + indent_sz );
-      }
+#endif
 
-    if ( _op != NOP ) // print operator
+    std::string str(getIndent(indent));
+    if ( _op != NOP ) // operator
       {
-	os << indent << _op << "\n";
+	str += _op;
       }
     else if ( !base_type::empty() )  // not operator, must be value_type
       {
-	os << indent << (*this) << "\n";
+	str += getValue();
       }
     else // One, I guess?
       {
-	os << indent << "<1>\n";
+	str += "<1>";
       }
 
-    if ( _left  )
+    // print right tree.
+    if ( _left )
       {
-	_left->printTree( os, indent + indent_sz );
+	_left->printTree( os, str.length() + 1 );
+      }
+    
+    os << str << "\n";
+
+    if ( _right  )
+      {
+	_right->printTree( os, str.length() + 1 );
       }
 
     return os;
