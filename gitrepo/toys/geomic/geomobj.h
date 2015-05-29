@@ -121,7 +121,7 @@ class E {
    return E( bv, true );
  }
 
- /// Get I for this basis.
+ /// Get I for THIS basis, dim = REAL_DIM + IMAGINARY_DIM.
  static E psuedoScalar()
  {
    value_type bv = value_type(0);
@@ -479,12 +479,14 @@ template<class T, class B=E<4,1> >
    EMapIter pi = prod._coefs.begin(), END = prod._coefs.end();
    while (pi != END)
      {
-       if ( (*pi).second == value_type(0) || (*pi).second == value_type(-0) )
+       value_type v = prod.simplify((*pi).second);
+       if ( v == value_type(0) || v == value_type(-0) )
          {
 	   prod._coefs.erase( pi++ );
          } 
        else 
 	 {
+	   (*pi).second = v;
 	   ++pi;
 	 }
      }
@@ -510,7 +512,7 @@ template<class T, class B=E<4,1> >
    GO prod;
    for ( EMapCIter lefti = _coefs.begin(), END = _coefs.end(); lefti != END; ++lefti )
      {
-       prod._coefs[ (*lefti).first ] = (*lefti).second * vt;
+       prod._coefs[ (*lefti).first ] = simplify((*lefti).second * vt);
      }
    return prod;
  }
@@ -634,7 +636,7 @@ template<class T, class B=E<4,1> >
 	   else
 	     {  // must be equal
 	       if ((*lefti).first != (*righti).first) std::cout << "bang\n";
-	       const value_type diff = (*lefti).second - (*righti).second;
+	       const value_type diff = simplify((*lefti).second - (*righti).second);
 	       if (diff != value_type(0))
 		 sub._coefs[(*lefti).first] = diff;
 	       ++righti;
@@ -679,7 +681,7 @@ template<class T, class B=E<4,1> >
 	   else
 	     {  // must be equal
 	       if ((*lefti).first != (*righti).first) std::cout << "bang\n";
-	       const value_type sum = (*lefti).second + (*righti).second;
+	       const value_type sum = simplify((*lefti).second + (*righti).second);
 	       if (sum != value_type(0))
 		 add._coefs[(*lefti).first] = sum;
 	       ++righti;
@@ -740,6 +742,14 @@ template<class T, class B=E<4,1> >
    if (_coefs.empty()) os << "0";  // incase we have nothing.
    return os;
  }
+
+ template<class V>
+ inline V simplify(const V& value) const { return value; }
+#ifdef __SYMBOLIC_MATHS_H
+ template<class T1, class T2>
+ Symath::Sym<T1,T2> simplify(const Symath::Sym<T1,T2>& sym) const { return sym.cancelAdditions(); }
+#endif
+
 
  //------------------------------------------------------------
  /// the ELEMENT MAP key=Basis value=coefficients
