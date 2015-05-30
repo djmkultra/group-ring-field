@@ -1,9 +1,7 @@
-/// symbolic math stuffs: verbose naive brute-force ad-hoc hax
-
+/// A symbolic field.
 
 #ifndef __SYMBOLIC_MATHS_H
 #define __SYMBOLIC_MATHS_H
-
 
 #include <algorithm>
 #include <cassert>
@@ -11,258 +9,155 @@
 #include <map>
 #include <list>
 #include <string>
+#include <sstream>
 #include <limits>
-#include "vec.h"
-#include "smartptr.h"
-
-
-
-
-/// a modified string, captures operations as symbols
+#include "smartptr.h"  // TODO: maybe we should move away from smartptr?
 
 namespace Symath {
-   
-  /// Badness symbols, we hope to never see.
-  const std::string WTF("??");
-  const std::string NOTANUMBER("NAN");
-
-  /// Important constants
-  /// TODO: should just be 0 and 1
-  const std::string ONE("#1");
-  const std::string ONE_("1");  // TODO get rid of
-  const std::string NEG_ONE("-1");  // TODO get rid of
-  const std::string ZERO("#0");
-  const std::string NEG_ZERO("-0");  // TODO get rid of
-  const std::string INTEGER("#");
-
-  /// Operators and functions, these work directly on symbols: S1 * S2
-  const std::string MINUS("-");
-  const std::string NEG("-");
-  const std::string PLUS("+");
-  const std::string TIMES("*");
-  const std::string DIV("/");
+  /// Operators:
+  const std::string PLUS("+");  // associative & communitive
+  const std::string TIMES("*"); // associative & communitive
+  const std::string MINUS("-"); // additive inverse
+  const std::string NEG("-");   // -a == -1*a
+  const std::string DIV("/");   // multiplicitive inverse
+  const std::string NOP("");    // Undefined
 
   /// See bottom of file for definitions that work with symbols: pow(S1,S2)
+  /// TODO: flesh this out....
   const std::string POW("^");
   const std::string SIN("Sin");
   const std::string COS("Cos");
 
-  /// TODO: Need to fill out "function" implementation, what about n-ary ops?
-
   /// These are used in parsing and print-out, not in symbols.
   const std::string OPR("(");
   const std::string CPR(")");
-  const std::string NOP("?");
   const std::string NUM("#");
-   
-   
+
   ///----------------------------------------------------------
   //
   /// symbolic value type
   /// names instead of numbers, capable of some simplifications
-  /// would be nice to make this really dance
-  //
-  // TODO fix use of Ptrs and clone, only copy on modify. almost done
-  // TODO make neg and minus distinquishable at least for printing
-  // TODO should ops be strings?
+  //  implements a communitive-field algebra
   // TODO functions n-ary
 
-  template <class BASE_T = std::string, class OPER_T = std::string >   
-    class Sym : public BASE_T, public gutz::Counted {
+  class Sym : public gutz::Counted {
   public:
-  /// NOTE an empty symbol means 1 (one, mult-identiy) NOT 0 (add-identity)
-  /// ... though why we end up with empty symbols is weirdness.
+  /// NOTE: An empty symbol defaults to 1 (one, mult-identiy) NOT 0 (add-identity)
+  /// ... though we should not end up with empty symbols.
     
-  //-----------------------------------------------------------------------------
-  /// This is a sub-class of std::string, expression stored in parent
-  ///   getValue(), setValue() give you easy access, so as to express yourself 
-  typedef BASE_T           base_type;
-  typedef BASE_T           value_type;
-  typedef OPER_T           operator_type;
-  typedef Sym<BASE_T>      this_type;
-      
   //-----------------------------------------------------------------------------
   /// smart pointer typedef, list-of typedef
   //
-  typedef typename gutz::SmartPtr< this_type >   SymSP;
-  typedef typename std::list< SymSP >            SymPVec;
-  typedef typename SymPVec::iterator             SymPVecIter;
+  typedef gutz::SmartPtr< Sym >         SymSP;
+  typedef std::list< SymSP >            SymPVec;
+  typedef SymPVec::iterator             SymPVecIter;
       
   //-----------------------------------------------------------------------------
   /// Key constants, you should use these!
+  
   /// 1 the multiplicitve identity
-  static const Sym& one() {
-    static SymSP __one;
-    if (!__one) 
-      {
-	__one = new Sym();
-	// avoid infinite recursion, set manually
-	static_cast<base_type*>(__one)->operator=(ONE);
-	__one->_op = NOP;
-	__one->_is_doppleganger = true;
-	__one->_integer = 1;
-      }
-    return *__one;
-  }
+  static const Sym one() { return Sym(1); }
   /// 0 the additive identity, multiplicitive null
-  static const Sym& zero() {
-    static SymSP __zero;
-    if (!__zero) 
-      {
-	__zero = new Sym();
-	// avoid infinite recursion, set manually
-	static_cast<base_type*>(__zero)->operator=(ZERO);
-	__zero->_op = NOP;
-	__zero->_is_doppleganger = true;
-	__zero->_integer = 0;
-      }
-    return *__zero;
-  }
+  static const Sym zero() { return Sym(0); }
 
+  protected:
   //-----------------------------------------------------------------------------
   ///   DATA: Operator & Operands
   ///  Name/symbolic-quantity is stored in the base_type
-  /// TODO(djmk): remove mutable, make class immutable and use ptrs more, copies less.
-  mutable operator_type _op;    /// operator
-  mutable SymSP         _left;     /// left hand side
-  mutable SymSP         _right;    /// right hand side
-  int                   _integer;  /// a integral value 
+  std::string   _op;       /// operator
+  std::string   _value;
+  SymSP         _left;     /// left hand side
+  SymSP         _right;    /// right hand side
+  int           _integer;  /// a integral value 
 
-  /// twin of this sym, allows us to have unique symbols in an expression,
-  /// rather than copies.
+  /// Twin of this symbol, allows us to have unique symbols in an expression,
+  /// helps minimize copies while expressions are being built.
   mutable SymSP         _doppleganger;   
-  mutable bool          _is_doppleganger;  // set internally
-      
+  mutable bool          _is_doppleganger;  // was object created on heap?
+  
+  public:
   //-----------------------------------------------------------------------------
-  /// default constructor
+  /// default constructor, undefined symbol defaults to "1" (multiplicitive identity)
   Sym() 
-  : base_type(WTF), _op(WTF), _left(0), _right(0), _is_doppleganger(false)
+    : _value("#"), _op(), _left(0), _right(0), _integer(1), 
+    _doppleganger(0), _is_doppleganger(false)
   {}
-      
+            
   //-----------------------------------------------------------------------------
-  /// c-style string constructor
-  explicit Sym( const char *c_str ) 
-  : base_type(c_str), _op(NOP), _left(0), _right(0), _is_doppleganger(false)
+  /// Create a variable : Sym a1("a1"); 
+  explicit Sym( const std::string& symbol ) 
+    : _value(symbol), _op(), _left(0), _right(0), _integer(-0),
+    _doppleganger(0), _is_doppleganger(false)
   {
-    /// default behavior:
-    ///   set name-string to the null-terminated cstring
-    ///   unless the values are 0, 1, -1  (SKETCHY)
-    if ( c_str == (char*)0 ) 
+    if ( isNumeral(symbol) )
       {
-	(*this) = zero();
+	if ( symbol.empty() ) 
+	  {
+	    (*this) = Sym(1);
+	    return;
+	  }
+	else if ( symbol.at(0) == '#' )
+	  {
+	    std::stringstream ss(symbol.substr(1));
+	    ss >> _integer;
+	  }
+	else
+	  {
+	    std::stringstream ss(symbol);
+	    ss >> _integer;
+	  }
+	_value = "#";  // The integer token, so we know it's not a variable.
+	if ( _integer < 0 )  // keep integers positive.
+	  {
+	    (*this) = -(Sym(-_integer));
+	  }
       }
-    else if ( c_str == (char*)-1 )
-      {
-	(*this) = -one();
-      }
-    else if ( c_str == (char*)1 || getValue() == ONE ) 
-      {
-	(*this) = one();
-      }
-    else if ( getValue() == NEG_ONE )
-      {
-	(*this) = -one();
-      }
-  }
-      
-  //-----------------------------------------------------------------------------
-  /// Create a variable : string/basetype constructor 
-  explicit Sym( const base_type& val ) 
-  : base_type(val), _op(NOP), _left(0), _right(0), _is_doppleganger(false)
-  {
-    if ( val == "-1" ) 
-      {
-	(*this) = -one();
-      }
-    else if ( this->isOne() )
-      {
-	(*this) = one();
-      }
-    else if ( this->isZero() )
-      {
-	(*this) = zero();
-      }
-    else if ( isNumeral(val) )
-      {
-	std::stringstream ss(val.substr(1));
-	ss >> _integer;
-	base_type::operator=("#");
-      }
-    //    std::cout << " val " << val << "  " << _integer << std::endl;
-
   }
 
   //-----------------------------------------------------------------------------
   /// char constructor (checks if you use the char for numeric values -1, 0, 1
   explicit Sym( const char c ) 
-  : base_type(), _op(NOP), _left(0), _right(0), _is_doppleganger(false)
+    : _value(c,1), _op(), _left(0), _right(0), _integer(-0),
+    _doppleganger(0), _is_doppleganger(false)
   { 
     if ( '0' <= c && '9' >= c )
       {
-	//	std::cout << " char " << c << std::endl;
 	(*this) = Sym(static_cast<int>( c - '0' ));
       }
-    else
-      {
-	base_type::operator=(c);
-      }
-    //    std::cout << "  c  " << c << getValue() << "  " << (*this) << std::endl;
   }
       
   //-----------------------------------------------------------------------------
-  /// integer constructor, number-Syms "#2" "#3" ...
+  /// integer constructor, number-Symbols "#2" "#3" ... kept positive-rational
   explicit Sym( int i ) 
-  : base_type("#"), _op(NOP), _left(0), _right(0), _is_doppleganger(false), _integer(i)
+    : _value("#"), _op(), _left(0), _right(0), _integer(i),
+    _doppleganger(0), _is_doppleganger(false) 
   { 
-    if ( i == 0 || i == -0 ) 
-      {
-	(*this) = zero();
-      }
-    else if ( i == -1 ) 
-      {
-	(*this) = -one();
-      }
-    else if ( i == 1 )
-      {
-	(*this) = one();
-      }
-    else if ( i < 0 )   // pull out negation
-      {
-	(*this) = -(Sym(-i));
-      }
-    //    std::cout << " int " << getValue() << " " << _integer << std::endl;
+    if ( i < 0 )  // Keep integers positive.
+      (*this) = -(Sym(-i));
   }
       
   //-----------------------------------------------------------------------------
   //
-  /// full algebra tree-node constructor
+  /// expression tree-node constructor
   //
-  Sym( const base_type     & val,               ///< expression string (all up to this node)
-       const operator_type & op,                ///< operation (intrisic symbol-values are NOP)
+  Sym( const std::string & op,                ///< operation (intrisic symbol-values are NOP)
        SymSP                 left,              ///< left operand (0 if not relevant)
        SymSP                 right = SymSP(0) ) ///< right operand (0 if not relevant) 
-  : base_type(val), _op(op), _left(left), _right(right), 
+    : _value(), _op(op), _left(left), _right(right), _integer(-0),
     _doppleganger(0), _is_doppleganger(false)
   {
-    if (this->isOne())
+    if ( op.empty() )
       {
-	(*this) = one();
-      }
-    if (this->isZero())
-      {
-	(*this) = zero();
-      }
-    if ( op == NOP && isNumeral(val) )
-      {
-	(*this) = Sym(val);
+	std::cerr << "Sym:invalid operator" << std::endl;
+	_op = "?";
       }
   }
       
   //-----------------------------------------------------------------------------
   /// copy constructor, shallow copy
   Sym( const Sym &s ) 
-  : base_type(s), _op(s._op), _left(s._left), _right(s._right), 
-   _doppleganger(s._doppleganger), _is_doppleganger(false), _integer(s._integer)
+    : _value(s._value), _op(s._op), _left(s._left), _right(s._right), _integer(s._integer),
+    _doppleganger(s._doppleganger), _is_doppleganger(false)
   {
     if ( s._is_doppleganger )
       _doppleganger = s.copyMaybe();
@@ -292,7 +187,7 @@ namespace Symath {
   /// assignment operator, shallow copy, shared pointers
   Sym &operator=(const Sym &s)  
   { 
-    base_type::operator=(s); 
+    _value = s._value;
     _op = s._op;
     _left = s._left;
     _right = s._right;
@@ -300,46 +195,47 @@ namespace Symath {
     _integer = s._integer;
     if ( s._is_doppleganger )
       _doppleganger = s.copyMaybe();
-    if ( s.isOne() )
-      _integer = 1;
-    if ( s.isZero() )
-      _integer = 0;
-    //    std::cout << " assign " << (*this) << "   " << _integer << std::endl;
     return *this;
   }
       
   /// get symbol expression string
-  const base_type &getValue() const { return *this; }
+  const std::string &getValue() const { return _value; }
 
   //-----------------------------------------------------------------------------
       
-  static bool isEmpty(const std::string& val) { return val.empty(); }
-  static bool isEmpty(double val) { return false; }
-  static bool isOne(const base_type& val)
+  static bool isOne(const std::string& val)
   {  // one can be the empty string, or "one" or "1" or ....
-    return ((isEmpty(val) || val == ONE || val == ONE_));
+    return val.empty() || val == "1" || val == "#1";
   }
-  static bool isOne(double val) { return val == 1.0; }
   static bool isNegOne(const std::string& val) 
   {  // This should go away, not a valid symbol, should be -(1) (negate 1)
-    return !val.empty() && (val.at(0) == '-') && isOne(val.substr(1));
+    return !val.empty() && (val == "-1" || val == "#-1");
   }
-  static bool isNegOne(double val) { return val == -1.0; }
   static bool isZero(const std::string& val)
   {
-    return (!val.empty()) && (val == ZERO || val == NEG_ZERO || val == "0");
+    return !val.empty() && (val == "#0" || val == "-0" || val == "0");
   }
-  static bool isNumeral(double val) { return true; }
-  static bool isNumeral(const std::string& val) { return !val.empty() && val.at(0) == '#'; }
+  static bool isNumeral(const std::string& val) {  // Symbolic integer "#" or "0"-"9"
+    if (val.empty()) return false;
+    char c = val.at(0);
+    if (c == '#' || (c <= '9' && c >= '0')) return true;
+    if (val.size() < 2) return false;
+    char c2 = val.at(1);
+    if (c == '-' && (c2 <= '9' && c2 >= '0')) return true;
+    return false;
+  }
+  static bool numberCheck(const std::string& val) {  // Just check for "#"
+    return (!val.empty()) && (val.at(0) == '#');
+  }
 
   // It's tricky to tell the difference between minus and negate, these help
-  bool isNegateOp() const { return (this->_op == NEG && _left && !_right); }
-  bool isMinusOp() const { return (this->_op == MINUS && _left && _right); }
-  bool isZero() const { return isZero(getValue()); }
-  bool isOne() const { return isOne(getValue()); }
-  bool isVariable() const { return !_left && !_right && _op == NOP && !isNumeral(); }
-  bool isNumeral() const { return isNumeral(getValue()) || isOne() || isZero(); }
-  bool isLeaf() const { return (_right == 0 && _left == 0 ); }
+  bool isNegateOp() const { return (this->_op == "-" && _left && !_right); }
+  bool isMinusOp() const { return (this->_op == "-" && _left && _right); }
+  bool isZero() const { return isNumeral() && _integer == 0; }
+  bool isOne() const { return isNumeral() && _integer == 1; }
+  bool isVariable() const { return isLeaf() && _op.empty() && !numberCheck(getValue()); }
+  bool isNumeral() const { return isLeaf() && numberCheck(getValue()); }
+  bool isLeaf() const { return _right == 0 && _left == 0; }
 
   //-----------------------------------------------------------------------------
   /// -(*this)  NEGATE uinary
@@ -351,6 +247,11 @@ namespace Symath {
 	return zero();
       }
          
+    if ( this->isNumeral() && _integer < 0 )
+      {
+	return Sym(-_integer);
+      }
+
     /// --A -> A double negative
     if ( this->isNegateOp() ) 
       {
@@ -365,10 +266,8 @@ namespace Symath {
       }
 
     /// new node - , A
-    return Sym( NEG + getValue(),
-		NEG,
-		this->copyMaybe() 
-		);
+    return Sym( NEG,
+		this->copyMaybe() );
   }
       
   //-----------------------------------------------------------------------------
@@ -397,7 +296,13 @@ namespace Symath {
       {
 	return *this;
       }
-         
+
+    // numbers
+    if ( this->isNumeral() && s.isNumeral() )
+      {
+	return Sym( _integer * s._integer );
+      }
+
     /// Both sides are negates
     /// -l * -r = l * r
     if ( this->isNegateOp() && s.isNegateOp() )  /// both neg (now pos)
@@ -416,33 +321,8 @@ namespace Symath {
 	return -(*this);
       }
 
-#if 0    
-    // (a/b) * (c/d) --> (a*c) / (b*d)
-    if ( this->_op == DIV && s._op == DIV ) 
-      {
-	return (*_left * *s._left) / (*_right * *s._right);
-      }
-    // (a/b) * c --> (c * a) / b
-    if ( this->_op == DIV )
-      {
-	return (*_left * s) / (*_right);
-      }
-#endif 
-#if 0         
-    /// TODO(djmk) this is actuallly broken we can't do powers greather than 2...
-    if ( *this == s )  
-      {
-	return Sym( l + POW + base_type("2"),
-		    POW,
-		    this->copyMaybe(),
-		    new Sym( base_type("2") )
-		    );
-      }
-#endif    
-
     /// regular old *
-    return Sym( this->getValue() + "*" + s.getValue(), 
-		TIMES, 
+    return Sym(	TIMES, 
 		this->copyMaybe(), 
 		s.copyMaybe() );
   }
@@ -476,17 +356,21 @@ namespace Symath {
       {
 	return *this;
       }
+    /// numbers
+    if ( this->isNumeral() && s.isNumeral() )
+      {
+	return Sym(_integer - s._integer);
+      }
+    
     /// a--b = a+b
     if ( s.isNegateOp() )
       {
 	return (*this) + (*s._left); 
       }
 
-    return Sym(getValue() + MINUS + s.getValue(), 
-	       MINUS, 
-	       this->copyMaybe(), 
-	       s.copyMaybe()
-	       ); 
+    return Sym(	MINUS, 
+		this->copyMaybe(), 
+		s.copyMaybe() ); 
   }
 
   //-----------------------------------------------------------------------------
@@ -506,10 +390,17 @@ namespace Symath {
       {
 	return zero();
       }
+    
+    // a/a = 1
+    if ( (*this) == s ) 
+      {
+	return one();
+      }
+
     if ( s.isZero() )
       {
-	std::cerr << "Sym operator/() dividion by zero!!!!!!!!" << std::endl;
-	return Sym(NOTANUMBER);
+	std::cerr << "Sym operator/() dividion by zero!!!!!!!! (" << *this << " / " << s << std::endl ;
+	return Sym("NaN");
       }
 
     // -a/-b  = a/b
@@ -518,27 +409,15 @@ namespace Symath {
 	return *_left / *s._left;
       }
 
-    // a/-b  = (-a)/b
+    // a/-b  = (-a)/b  TODO unnecessary reduction... messes up others
     if ( s.isNegateOp() )
       {
 	return (-*this) / *s._left;
       }
          
-    /// because one is weird.
-    if ( this->isOne() )
-      {
-	return Sym( ONE + DIV + s.getValue(), 
-		    DIV, 
-		    one().copyMaybe(), 
-		    s.copyMaybe() 
-		    );
-      }
-         
-    return Sym( getValue() + DIV + s.getValue(), 
-		DIV, 
+    return Sym(	DIV, 
 		this->copyMaybe(), 
-		s.copyMaybe()
-		); 
+		s.copyMaybe() ); 
   }
   //-----------------------------------------------------------------------------
   /// TODO disallow side effects
@@ -567,6 +446,11 @@ namespace Symath {
       {
 	return *this;
       }
+
+    if ( this->isNumeral() && s.isNumeral() )
+      {
+	return Sym(_integer + s._integer);
+      }
    
     // neg right, check for cancellation
     if ( s.isNegateOp() ) 
@@ -584,11 +468,9 @@ namespace Symath {
          
     /// Both sides are relevant
     
-    return Sym( getValue() + PLUS + s.getValue(), 
-		PLUS, 
+    return Sym(	PLUS, 
 		this->copyMaybe(), 
-		s.copyMaybe() 
-		);
+		s.copyMaybe() );
   }
           
   //-----------------------------------------------------------------------------
@@ -603,41 +485,35 @@ namespace Symath {
   { 
     return !isZero();
   }
-  //-----------------------------------------------------------------------------
-  bool operator<( int i ) const /// WTF?
-  { 
-    std::stringstream iss;
-    iss << i;
-    if ( getValue() < iss.str() ) return true;
-    return false; 
-  }
 
   //-----------------------------------------------------------------------------
   // important for generating the "normalForm"
   bool operator<( const Sym &s ) const
   {
-    // ignore negates (for now)
+    // integers are the least of all.
+    if ( this->isNumeral() && s.isNumeral() ) return _integer < s._integer;
+    if ( this->isNumeral() ) return true;
+    if ( s.isNumeral() ) return false;
+
+    // ignore negates for comparison, unless we have -a vs a
     // -a < a, but a < -b 
     if ( this->isNegateOp() )
       {
 	if ( s.isNegateOp() )
-	  {
 	    return *(this->_left) < *(s._left);
-	  }
+
 	// -a < a
 	if ( *(this->_left) == s ) 
-	  {
 	    return true;
-	  }
+
 	return *(this->_left) < s;
       }
     if ( s.isNegateOp() )
       {
 	// a > -a
 	if ( *this == *(s._left) ) 
-	  {
 	    return false;
-	  }
+
 	return *this < *(s._left);
       }
 
@@ -682,49 +558,44 @@ namespace Symath {
   // tests if the two expressions are EXACTLY the same, not equivalent 
   bool operator==( const Sym &s ) const 
   {
-    // because 0 and 1 are special...?
-    if ( this->isOne() && s.isOne() ) return true;
-    if ( this->isZero() && s.isZero() ) return true;
-
-    if ( isLeaf() ) // must be a variable
+    if ( this->isLeaf() ) // must be a variable or number
       {
+	if ( !s.isLeaf() ) return false;
+	// Numbers?
 	if ( this->isNumeral() && s.isNumeral() ) return this->_integer == s._integer;
 	if ( this->isNumeral() || s.isNumeral() ) return false;
+	// Variable.
 	return getValue() == s.getValue();
       }
-    
+
+    // Must be an operator
     if ( _op != s._op ) return false;
     
-    if ( _left )
+    if ( _left && s._left )
       {
-	if (!s._left) return false;
 	if (!(*_left == *s._left)) return false;
       }
-    else if (s._left) return false;
+    else if (_left || s._left) return false;
 
-    if ( _right )
+    if ( _right && s._right )
       {
-	if (!s._right) return false;
 	if (!(*_right == *s._right)) return false; 
       }
-    else if (s._right) return false;
+    else if ( _right || s._right) return false;
 
     return true; 
   }
   //-----------------------------------------------------------------------------
-  bool operator==( const value_type &s ) const 
+  bool operator==( const std::string &s ) const 
   { 
-    if ( this->isOne() && isOne(s) ) return true;
-    if ( this->isZero() && isZero(s) ) return true;
-    if ( _left || _right ) return false;
-    return getValue() == s; 
+    return *this == Sym(s); 
   }
                   
   //-----------------------------------------------------------------------------
   // distribute products through sums, make sure all +/- are above * in tree
   // (a + b) * (c + d) = ac + bc + ad + bd (sum of products only)
   Sym distribute() const {
-#if 1
+
     if ( isNegateOp() ) // push negates down to leaves of product expressions -(a*b) --> (-a) * b
       {
 	if ( _left->_op == TIMES ) // -(a * b) --> (-a) * b
@@ -752,7 +623,7 @@ namespace Symath {
 	    std::cout << " **** WTF **** ";
 	  }
       }
-#endif
+
     if ( _op == TIMES )  // l*r
       {
 	Sym left = _left->distribute();
@@ -818,12 +689,12 @@ namespace Symath {
       }
 
     if ( _left && _right )
-      return Sym(getValue(), _op, 
+      return Sym(_op, 
 		 _left->distribute().copyMaybe(), _right->distribute().copyMaybe());
     if ( _left )
-      return Sym(getValue(), _op, _left->distribute().copyMaybe());
+      return Sym(_op, _left->distribute().copyMaybe());
     if ( _right )
-      return Sym(getValue(), _op, NULL, _right->distribute().copyMaybe());
+      return Sym(_op, NULL, _right->distribute().copyMaybe());
 
     return *this;
   }
@@ -832,7 +703,7 @@ namespace Symath {
   /// -(a + (b*a - c)) -> (-a) + ((-b)*a + c)
   Sym makeAdditive() const 
   {
-    if ( !_left && !_right )
+    if ( isLeaf() )
       return *this;
 
     // a - b = a + (-b)
@@ -856,7 +727,7 @@ namespace Symath {
 	  }
       }
 
-    return Sym(getValue(), _op,
+    return Sym(_op,
 	       _left ? _left->makeAdditive().copyMaybe() : NULL,
 	       _right ? _right->makeAdditive().copyMaybe() : NULL);
   }
@@ -921,15 +792,16 @@ namespace Symath {
   // expressions sorted.  If two different but equivalent expressions
   // are placed in normal form, we should be able to detect equivalence
   // a*(a-b)+(a+b)(a+b)+c --> c + -a*b + a*a + a*a + a*b + a*b + b*b
+  struct SymPComp {
+    bool operator() (const SymSP& a, const SymSP& b) {
+      return (*a) < (*b);
+    }
+  } sym_ptr_comp;
+
   Sym normalForm(bool distrib = true) const {
     if ( isLeaf() )
       return *this;
 
-    struct SymPComp {
-      bool operator() (const SymSP& a, const SymSP& b) {
-	return (*a) < (*b);
-      }
-    } sym_ptr_comp;
 
     // if |distrib| is false, we are probably inside a recursion, it's already done.
     // Distribute terms: make sum of products
@@ -956,13 +828,13 @@ namespace Symath {
 	    // rebuild multiplicitive expression tree from normalized subexps
 	    Sym mexp(one());
 
-	    if ( neg )	    // don't forget to return the negative we stripped off
-	      mexp = -mexp; // keep negates as close to leaves as possible
-
 	    for (SymPVecIter miter = multexps.begin(), mend = multexps.end(); miter != mend; ++miter)
 	      {
 		mexp = mexp * *(*miter);
 	      }
+	    if ( neg )	    // don't forget to return the negative we stripped off
+	      mexp = -mexp; // keep negates as close to leaves as possible
+
 	    (*aiter) = mexp.copyMaybe();
 	  }
 	else // only one expression, do not recurse, put the negative back tho
@@ -988,12 +860,11 @@ namespace Symath {
   Sym cancelAdditions(bool normalize_form = true) const
   {
     Sym std_form = normalize_form ? this->normalForm() : (*this);
-
     // no additive subexpressions to cancel at this level, recurse on subexpressions.
     if ( ! (std_form._op == PLUS || std_form.isMinusOp()) )
       {
 	if (std_form._left || std_form._right)  // carefull to never copy leaf nodes.
-	  return Sym(std_form.getValue(), std_form._op, 
+	  return Sym(std_form._op, 
 		     std_form._left ? std_form._left->cancelAdditions().copyMaybe() : NULL,
 		     std_form._right ? std_form._right->cancelAdditions().copyMaybe() : NULL);
 	return *this;
@@ -1004,15 +875,16 @@ namespace Symath {
     /// grab all sub expression connected by addition (commute trivially)    
     std_form.getAdditiveSubexps( &subexps );
        
-    if ( subexps.size() <= 1 ) std::cout << "badness in cancel" << std::endl;
+    if ( subexps.size() <= 1 ) std::cerr << "badness in cancel" << std::endl;
   
     /// double loop checking to see if any subexpression will cancel each others
     ///   if they do, remove both from list, O(N^2)
     SymPVecIter spviA = subexps.begin();
     while ( spviA != subexps.end() ) 
       {
-	if ( !(*spviA) ) std::cout << " BOOM " << std::endl;
-	if ( (*spviA)->isZero() )  // already zero, remove
+	if ( !(*spviA) ) std::cerr << " BOOM " << std::endl;
+	Sym& left = **spviA;
+	if ( left.isZero() )  // already zero, remove
 	  {
 	    subexps.erase(spviA++);
 	    continue;
@@ -1022,27 +894,28 @@ namespace Symath {
 	++spviB;
 	while ( spviB != subexps.end() ) // check against every other
 	  {
-	    if ( !(*spviB) ) std::cout << " BOMB " << std::endl;
+	    if ( !(*spviB) ) std::cerr << " BOMB " << std::endl;
+	    Sym& right = **spviB;
 	    /// is 0, remove
-	    if ( (*spviB)->isZero() )
+	    if ( right.isZero() )
 	      {
 		subexps.erase(spviB++);
 		continue;
 	      }
 	    ///  -left + right
-	    if ( ((*spviA)->isNegateOp() && !(*spviB)->isNegateOp()) )
+	    if ( left.isNegateOp() && !right.isNegateOp() )
 	      {
-		if ( (*(*spviA)->_left) == (*(*spviB)) )
+		if ( *left._left == right )
 		  {  // CANCEL, nuke both
 		    increment = false;
-		    subexps.erase(spviB);  // you MUST delete this one first
+		    subexps.erase(spviB);   // you MUST delete this one first
 		    subexps.erase(spviA++); // so this increment works
 		    break;
 		  }
 	      }
-	    else if ( !(*spviA)->isNegateOp() && (*spviB)->isNegateOp() )
+	    else if ( !left.isNegateOp() && right.isNegateOp() )
 	      {  //      left + -right = 0
-		if ( *(*spviA) == *(*spviB)->_left )
+		if ( left == *right._left )
                   {  // CANCEL, nuke
 		    increment = false;
 		    subexps.erase(spviB);   // same as above
@@ -1052,7 +925,6 @@ namespace Symath {
 	      }
 	    ++spviB;
 	  } /// end while B
-	//std::cout << std::endl;
 	if (increment) 
 	  ++spviA;
       } /// end while A
@@ -1089,9 +961,11 @@ namespace Symath {
 	  {
 	    str += sym->_op;
 	  }
-	else if ( sym->isNumeral() && !sym->isOne() && !sym->isZero() )
+	else if ( sym->isNumeral() )
 	  {
-	    str += sym->getValue().substr(1);
+	    std::stringstream ss;
+	    ss << _integer;
+	    str += ss.str();
 	  }
 	else if ( !sym->getValue().empty() )
 	  {
@@ -1099,7 +973,7 @@ namespace Symath {
 	  }
 	else  // one I guess? 
 	  {
-	    str += "<1>";
+	    str += std::string("<?>");
 	  }
 
 	if (sym->_left) sym->_left->printTree(os, str.length() + 1);
@@ -1108,36 +982,26 @@ namespace Symath {
 	return os;
       } /// END IF NEG NODE
 
-#if 0         
-    /// leaf operation  print out inline:   A * B, Sin x, x ^ y etc...  
-    if ( _op != NOP  && 
-	 (!_right || (_right && _right->isLeaf())) &&  // maybe right 
-	 (!_left || (_left && _left->isLeaf())) )  // maybe left
-      {
-	os << getIndent(indent) << "( ";
-	if ( _left )
-	  os << (*_left) << " ";
-	os << _op;
-	if ( _right )
-	  os << " " << (*_right) << " )\n";
-	return os;
-      }
-#endif
 
     std::string str(getIndent(indent));
     if ( _op != NOP ) // operator
       {
 	str += _op;
       }
-    else if ( !base_type::empty() )  // not operator, must be value_type
+    else if ( isNumeral() )
       {
-	if ( isNumeral() && !isOne() && !isZero() ) str += getValue().substr(1);
-	else str += getValue();
+	std::stringstream ss;
+	ss << _integer;
+	str += ss.str();
       }
-    else // One, I guess?
+    else if ( !_value.empty() )  // not operator, must be value_type
       {
-	str += "<1>";
+	str += _value;
       }
+    else // WTF?
+     {
+       str += "<?>";
+     }
 
     // print right tree.
     if ( _left )
@@ -1155,16 +1019,16 @@ namespace Symath {
     return os;
   }
       
-  std::ostream& printInfix( std::ostream &os, const base_type &last_op = NOP ) const
+  std::ostream& printInfix( std::ostream &os, const std::string &last_op = NOP ) const
   {
     bool parens = true;
-    if ( last_op == NOP || last_op == PLUS || last_op == MINUS || (!_left && !_right) ) parens = false; 
+    if ( last_op == NOP || last_op == PLUS || last_op == MINUS || isLeaf() ) parens = false; 
     if ( _op == TIMES || _op == DIV ) parens = false;
     if ( isNegateOp() ) parens = false;
-    if ( last_op == DIV && _op != NOP) parens = true;
+    if ( last_op == DIV && _op != NOP ) parens = true;
 
     // treat negate as -1 * x so we don't confuse neg and minus
-    base_type this_op = isNegateOp() ? TIMES : _op;
+    std::string this_op = isNegateOp() ? TIMES : _op;
 
     if ( isNegateOp() ) os << NEG;
     if ( parens ) os << OPR;
@@ -1172,12 +1036,12 @@ namespace Symath {
     
     if ( _op != NOP && !isNegateOp() ) os << _op;
     else if ( this->isNumeral() && !isNegateOp() ) os << _integer;
-    else if ( !isNegateOp() )  os << getValue();
+    else if ( !isNegateOp() && !getValue().empty())  os << getValue();
+    else if ( !isNegateOp() && getValue().empty() ) os << "?<" << _op << "|" << _integer << ">";
 
     if ( _right ) _right->printInfix( os, this_op );
     if ( parens ) os << CPR;
 
-    //std::cout << "<" << getValue() << ">";
     return os;
   }
       
@@ -1186,57 +1050,36 @@ namespace Symath {
   /// standard ostream << printer
   std::ostream &operator<<( std::ostream &os ) const
   {
-    printInfix(os, TIMES);
-    return os;
+    return printInfix(os, TIMES);
   }
       
-  };
-   
-  typedef Sym<>   Symbol;
-
-  /// These are handy but still verbose to use outside the namespace.
-  const  Symbol   one = Symbol::one();
-  const  Symbol   zero = Symbol::zero();
-  const  Symbol   a("a"); 
-  const  Symbol   b("b"); 
-  const  Symbol   c("c"); 
-  const  Symbol   d("d"); 
-  const  Symbol   e("e"); 
-  const  Symbol   f("f"); 
-  const  Symbol   g("g"); 
-   
-  const  Symbol   x("x"); 
-  const  Symbol   y("y"); 
-  const  Symbol   z("z"); 
-  const  Symbol   w("w"); 
-   
-   
-}/// end namespace Symath
+};
+      
+}  /// end namespace Symath
 
 
 //-----------------------------------------------------------------------------
 // Print operator, do we really need this?
-std::ostream &operator<<( std::ostream &os, const Symath::Symbol &s  )  
+std::ostream &operator<<( std::ostream &os, const Symath::Sym &s  )  
 {
   return s.operator<<( os );
 }
 
-// Functions added to global namespace, could we do this in the namespace?
+// Functions added to global namespace
+// TODO could we do this in the namespace?
 
-Symath::Symbol sin(const Symath::Symbol& s) 
+Symath::Sym sin(const Symath::Sym& s) 
 {
-  return Symath::Symbol(Symath::SIN + Symath::OPR + s.getValue() + Symath::CPR,
-			Symath::SIN,
-			NULL,       // right associative function?? still working on it.
-			s.copyMaybe());
+  return Symath::Sym( Symath::SIN,
+		      NULL,       // right associative function?? still working on it.
+		      s.copyMaybe());
 }
 
-Symath::Symbol cos(const Symath::Symbol& s) 
+Symath::Sym cos(const Symath::Sym& s) 
 {
-  return Symath::Symbol(Symath::COS + Symath::OPR + s.getValue() + Symath::CPR,
-			Symath::COS,
-			NULL,       // right associative function?? still working on it.
-			s.copyMaybe());
+  return Symath::Sym( Symath::COS,
+		      NULL,       // right associative function?? still working on it.
+		      s.copyMaybe());
 }
 
 // TODO(djmk): the rest of cmath...

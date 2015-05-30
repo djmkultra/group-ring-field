@@ -7,7 +7,7 @@
 
 
 
-typedef Symath::Symbol S;
+typedef Symath::Sym S;
 using namespace std;
 
 int main( int argc, char **argv )
@@ -44,10 +44,11 @@ int main( int argc, char **argv )
   std::cout << " w native = " << w << "   w.w =  " << inner(w,w) << std::endl;
   std::cout << " Y " << Y << "  Y.Y = " << inner(Y,Y) << std::endl;
   std::cout << " W.Y = " << inner(W,Y) << "  = -1/2(|w-y|)^2 " << std::endl; 
-  std::cout << " ni.W = -coeff(n0) = -1 : " << inner(GOf::ni(),W);
+  std::cout << " ni.W = -coeff(n0) = -1 : " << inner(GOf::ni(),W) << std::endl;
   GOsym Ws = GOsym::conformal(S("w1"),S("w2"),S("w3"));
-  std::cout << " Ws = " << Ws << std::endl;
-  std::cout << " Ws.Ws = " << simplify(inner(Ws,Ws)) << std::endl;
+  std::cout << " Ws =          " << Ws << std::endl;
+  std::cout << " Ws.distribute " << simplify(Ws) << std::endl;
+  std::cout << " Ws.Ws = " << inner(Ws,Ws) << std::endl;
   std::cout << " ws = " << GOsym::extract(Ws) << std::endl;
   GOsym Em = GOsym(S("1"),eminus);
   GOf Eem = GOf(1.0, eminus);
@@ -85,23 +86,24 @@ int main( int argc, char **argv )
 
   /// Test the translation versor
   GOsym Tr = GOsym::translateVersor(As);
-  std::cout << " Tr(A) = " << Tr << "  Tr(A)^(-1) = " << Tr.inverse() << std::endl; 
-  GOf Ef1(1,e2);
+  std::cout << " Tr(A)      = " << Tr << std::endl;
+  std::cout << " Tr(A)^(-1) = " << Tr.inverse() << std::endl << std::endl;
+  GOf Ef1(1,e1,1,e2,1,e3);
   GOf T = GOf::translateVersor(Ef1);
   std::cout << " W          " << W << std::endl;
-  std::cout << " T(A) =     " << T << std::endl;
-  std::cout << "  T(A)^(-1) = " << T.inverse() << std::endl;
-  std::cout << "  T(A)^(-1) = " << GOf::invTranslateVersor(Ef1) << std::endl;
-  std::cout << " T(A).T(A) = " << inner(T,T) << "      T * T = " << T * T << "   " << T.inverse() * T.inverse() <<std::endl;
-  std::cout << " T(A)T(A)^(-1) = " << T * (T.inverse()) << std::endl;
-  std::cout << " T(A)^(-1)T(A) = " << (T.inverse()) * T << std::endl;
-  std::cout << " T(A)T(A)^(-1) = " << T * GOf::invTranslateVersor(Ef1) << std::endl;
+  std::cout << " T(" << Ef1 << ") = T(A)  " << T << std::endl;
   std::cout << " T(A)WT(A)~ = " << T * W * T.inverse() << std::endl;
   std::cout << " T(A)WT(A)~ = " << T * W * T.reverse() << std::endl;
   std::cout << " T(A)wT(A)~ = " << T * GOf::extract(W) * T.inverse() << "  no work with native " << GOf::extract(W) << std::endl;
   std::cout << " T(A)~WT(A) = " << T.inverse() * W * T << std::endl;
   std::cout << "    = " << GOf::extract(T * W * T.inverse()) << "  native extract " << std::endl;
   std::cout << " expecting " << GOf::extract(W) + Ef1 << std::endl << std::endl;
+  std::cout << " T(A)^(-1) = " << T.inverse() << std::endl;
+  std::cout << " T(A)^(-1) = " << GOf::invTranslateVersor(Ef1) << std::endl;
+  std::cout << " T(A).T(A) = " << inner(T,T) << "      T * T = " << T * T << "   " << T.inverse() * T.inverse() <<std::endl;
+  std::cout << " T(A)T(A)^(-1) = " << T * (T.inverse()) << std::endl;
+  std::cout << " T(A)^(-1)T(A) = " << (T.inverse()) * T << std::endl;
+  std::cout << " T(A)T(A)^(-1) = " << T * GOf::invTranslateVersor(Ef1) << std::endl;
 
   /// Basic vector test
   std::cout << std::endl << std::endl;

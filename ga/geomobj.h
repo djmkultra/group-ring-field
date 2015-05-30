@@ -462,7 +462,7 @@ template<class T, class B=E<4,1> >
 	   
 	   /// ignore zeros
 	   /// TODO: should consider an epsilon critera here? (hard to get floats back to zero!
-	   if ( pv != value_type(0) && pv != value_type(-0) )  
+	   if ( !(pv == value_type(0) || pv == value_type(-0)) )  
 	     {
 	       if ( prod._coefs.find(pbase) == prod._coefs.end() ) 
 		 { ///< first coefficient instance with this basis elem.
@@ -637,7 +637,7 @@ template<class T, class B=E<4,1> >
 	     {  // must be equal
 	       if ((*lefti).first != (*righti).first) std::cout << "bang\n";
 	       const value_type diff = simplify((*lefti).second - (*righti).second);
-	       if (diff != value_type(0))
+	       if (!(diff == value_type(0)))
 		 sub._coefs[(*lefti).first] = diff;
 	       ++righti;
 	       ++lefti;
@@ -682,7 +682,7 @@ template<class T, class B=E<4,1> >
 	     {  // must be equal
 	       if ((*lefti).first != (*righti).first) std::cout << "bang\n";
 	       const value_type sum = simplify((*lefti).second + (*righti).second);
-	       if (sum != value_type(0))
+	       if ( !(sum == value_type(0)) )
 		 add._coefs[(*lefti).first] = sum;
 	       ++righti;
 	       ++lefti;
@@ -745,9 +745,11 @@ template<class T, class B=E<4,1> >
 
  template<class V>
  inline V simplify(const V& value) const { return value; }
+
 #ifdef __SYMBOLIC_MATHS_H
- template<class T1, class T2>
- Symath::Sym<T1,T2> simplify(const Symath::Sym<T1,T2>& sym) const { return sym.cancelAdditions(); }
+ Symath::Sym simplify(const Symath::Sym& sym) const { 
+   return sym.cancelAdditions(); 
+ }
 #endif
 
 
@@ -845,7 +847,7 @@ template< class T, class B >
 #ifdef __SYMBOLIC_MATHS_H
 
 /// Symbolic Geometric Object
-typedef GO<Symath::Symbol> GOsym;
+typedef GO<Symath::Sym> GOsym;
 
 /// SIMPLIFY ( symbolic geometric object )
 inline
@@ -858,9 +860,9 @@ GOsym simplify( const GOsym &g )
 
   for ( EMapIter emi = g._coefs.begin(); emi != g._coefs.end(); ++emi )
     {
-      Symath::Symbol sca = (*emi).second;
-      sca.cancelAdditions();
-      if ( sca == Symath::ZERO )
+      Symath::Sym sca = (*emi).second.cancelAdditions();
+ 
+      if ( sca == Symath::Sym::zero() )
 	{
 	  // do nothing
 	}
@@ -868,7 +870,6 @@ GOsym simplify( const GOsym &g )
 	{
 	  ret._coefs[(*emi).first] = sca;
 	}
-
     }
 
   return ret;

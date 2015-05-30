@@ -8,9 +8,26 @@ using namespace std;
 
 int main( int argc, char** argv )
 {
+  S one = S::one();
+  S zero = S::zero();
+  std::cout << " one " << one << " = " << S(one) << " = " << S(1) << " = " 
+	    << S("1") << " T " << one.isOne() << std::endl;
+  std::cout << " zero " << zero << " = " << S(zero) << " = " << S(0) << " = " 
+	    << S("0") << " T " << zero.isZero() << std::endl;
   
-   S  a("a");
-   S  b("b");
+  S w1("w1");
+  S w2("w2");
+  S w3("w3");
+  S Wsa = (one+-one/S(2)*(w1*w1+w2*w2+w3*w3)/S(2)); 
+  S Wsb = (one+(w1*w1+w2*w2+w3*w3)/S(2));
+  
+  std::cout << " Wsa      " << Wsa << std::endl;
+  std::cout << " Wsa dist " << Wsa.distribute() << std::endl;
+  std::cout << " Wsa norm " << Wsa.normalForm() << std::endl;
+  std::cout << " Wsa cncl " << Wsa.cancelAdditions() << std::endl << std::endl;
+
+  S  a("a");
+  S  b("b");
    
    cout << " a = " << a << "   b = " << b << endl;
    cout << " a*b = " << a*b << endl;
