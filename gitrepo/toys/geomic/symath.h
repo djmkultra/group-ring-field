@@ -31,8 +31,9 @@ namespace Symath {
   const std::string ONE("#1");
   const std::string ONE_("1");  // TODO get rid of
   const std::string NEG_ONE("-1");  // TODO get rid of
-  const std::string ZERO("0");
+  const std::string ZERO("#0");
   const std::string NEG_ZERO("-0");  // TODO get rid of
+  const std::string INTEGER("#");
 
   /// Operators and functions, these work directly on symbols: S1 * S2
   const std::string MINUS("-");
@@ -99,6 +100,7 @@ namespace Symath {
 	static_cast<base_type*>(__one)->operator=(ONE);
 	__one->_op = NOP;
 	__one->_is_doppleganger = true;
+	__one->_integer = 1;
       }
     return *__one;
   }
@@ -112,6 +114,7 @@ namespace Symath {
 	static_cast<base_type*>(__zero)->operator=(ZERO);
 	__zero->_op = NOP;
 	__zero->_is_doppleganger = true;
+	__zero->_integer = 0;
       }
     return *__zero;
   }
@@ -123,6 +126,7 @@ namespace Symath {
   mutable operator_type _op;    /// operator
   mutable SymSP         _left;     /// left hand side
   mutable SymSP         _right;    /// right hand side
+  int                   _integer;  /// a integral value 
 
   /// twin of this sym, allows us to have unique symbols in an expression,
   /// rather than copies.
@@ -145,25 +149,20 @@ namespace Symath {
     ///   unless the values are 0, 1, -1  (SKETCHY)
     if ( c_str == (char*)0 ) 
       {
-	base_type::operator=(ZERO);
-	_doppleganger = zero().copyMaybe();
+	(*this) = zero();
       }
     else if ( c_str == (char*)-1 )
       {
-	_op = NEG;
-	_left = one().copyMaybe();
+	(*this) = -one();
       }
     else if ( c_str == (char*)1 || getValue() == ONE ) 
       {
-	base_type::operator=(ONE);
-	_doppleganger = zero().copyMaybe();
+	(*this) = one();
       }
     else if ( getValue() == NEG_ONE )
       {
-	_op = NEG;
-	_left = one().copyMaybe();
+	(*this) = -one();
       }
-         
   }
       
   //-----------------------------------------------------------------------------
@@ -171,14 +170,26 @@ namespace Symath {
   explicit Sym( const base_type& val ) 
   : base_type(val), _op(NOP), _left(0), _right(0), _is_doppleganger(false)
   {
-    if (this->isOne())
+    if ( val == "-1" ) 
       {
-	_doppleganger = one().copyMaybe();
+	(*this) = -one();
       }
-    if (this->isZero())
+    else if ( this->isOne() )
       {
-	_doppleganger = zero().copyMaybe();
+	(*this) = one();
       }
+    else if ( this->isZero() )
+      {
+	(*this) = zero();
+      }
+    else if ( isNumeral(val) )
+      {
+	std::stringstream ss(val.substr(1));
+	ss >> _integer;
+	base_type::operator=("#");
+      }
+    //    std::cout << " val " << val << "  " << _integer << std::endl;
+
   }
 
   //-----------------------------------------------------------------------------
@@ -186,54 +197,40 @@ namespace Symath {
   explicit Sym( const char c ) 
   : base_type(), _op(NOP), _left(0), _right(0), _is_doppleganger(false)
   { 
-    if ( c == -1 )
+    if ( '0' <= c && '9' >= c )
       {
-	_op = NEG;
-	_left = one().copyMaybe();
+	//	std::cout << " char " << c << std::endl;
+	(*this) = Sym(static_cast<int>( c - '0' ));
       }
-    else if ( c == 0  )
-      {
-	base_type::operator=(ZERO);
-	_doppleganger = zero().copyMaybe();
-      }
-    else if ( c == 1 )
-      {
-	base_type::operator=(ONE);
-	_doppleganger = one().copyMaybe();
-      }
-    else if ( c != 1 )
+    else
       {
 	base_type::operator=(c);
       }
+    //    std::cout << "  c  " << c << getValue() << "  " << (*this) << std::endl;
   }
       
   //-----------------------------------------------------------------------------
   /// integer constructor, number-Syms "#2" "#3" ...
   explicit Sym( int i ) 
-  : base_type(), _op(NOP), _left(0), _right(0), _is_doppleganger(false)
+  : base_type("#"), _op(NOP), _left(0), _right(0), _is_doppleganger(false), _integer(i)
   { 
     if ( i == 0 || i == -0 ) 
       {
-	base_type::operator=(ZERO);
-	_doppleganger = zero().copyMaybe();
+	(*this) = zero();
       }
     else if ( i == -1 ) 
       {
-	base_type::operator=(NEG + ONE);
-	_op = NEG;
-	_left = one().copyMaybe();
+	(*this) = -one();
       }
     else if ( i == 1 )
       {
-	base_type::operator=(ONE);
-	_doppleganger = one().copyMaybe();
+	(*this) = one();
       }
-    else 
+    else if ( i < 0 )   // pull out negation
       {
-	std::stringstream ss;
-	ss << "#" << i;
-	base_type::operator=( ss.str() );
-      }         
+	(*this) = -(Sym(-i));
+      }
+    //    std::cout << " int " << getValue() << " " << _integer << std::endl;
   }
       
   //-----------------------------------------------------------------------------
@@ -249,11 +246,15 @@ namespace Symath {
   {
     if (this->isOne())
       {
-	_doppleganger = one().copyMaybe();
+	(*this) = one();
       }
     if (this->isZero())
       {
-	_doppleganger = zero().copyMaybe();
+	(*this) = zero();
+      }
+    if ( op == NOP && isNumeral(val) )
+      {
+	(*this) = Sym(val);
       }
   }
       
@@ -261,7 +262,7 @@ namespace Symath {
   /// copy constructor, shallow copy
   Sym( const Sym &s ) 
   : base_type(s), _op(s._op), _left(s._left), _right(s._right), 
-    _doppleganger(s._doppleganger), _is_doppleganger(false)
+   _doppleganger(s._doppleganger), _is_doppleganger(false), _integer(s._integer)
   {
     if ( s._is_doppleganger )
       _doppleganger = s.copyMaybe();
@@ -296,10 +297,14 @@ namespace Symath {
     _left = s._left;
     _right = s._right;
     _doppleganger = s._doppleganger;
-    if (s.isOne()) 
-      _doppleganger = one().copyMaybe();
-    if (s.isZero())
-      _doppleganger = zero().copyMaybe();
+    _integer = s._integer;
+    if ( s._is_doppleganger )
+      _doppleganger = s.copyMaybe();
+    if ( s.isOne() )
+      _integer = 1;
+    if ( s.isZero() )
+      _integer = 0;
+    //    std::cout << " assign " << (*this) << "   " << _integer << std::endl;
     return *this;
   }
       
@@ -322,7 +327,7 @@ namespace Symath {
   static bool isNegOne(double val) { return val == -1.0; }
   static bool isZero(const std::string& val)
   {
-    return (!val.empty()) && (val == ZERO || val == NEG_ZERO);
+    return (!val.empty()) && (val == ZERO || val == NEG_ZERO || val == "0");
   }
   static bool isNumeral(double val) { return true; }
   static bool isNumeral(const std::string& val) { return !val.empty() && val.at(0) == '#'; }
@@ -333,7 +338,7 @@ namespace Symath {
   bool isZero() const { return isZero(getValue()); }
   bool isOne() const { return isOne(getValue()); }
   bool isVariable() const { return !_left && !_right && _op == NOP && !isNumeral(); }
-  bool isNumeral() const { return isOne() || isZero() || isNumeral(getValue()); }
+  bool isNumeral() const { return isNumeral(getValue()) || isOne() || isZero(); }
   bool isLeaf() const { return (_right == 0 && _left == 0 ); }
 
   //-----------------------------------------------------------------------------
@@ -681,8 +686,10 @@ namespace Symath {
     if ( this->isOne() && s.isOne() ) return true;
     if ( this->isZero() && s.isZero() ) return true;
 
-    if (!_left && !_right) // must be a variable
+    if ( isLeaf() ) // must be a variable
       {
+	if ( this->isNumeral() && s.isNumeral() ) return this->_integer == s._integer;
+	if ( this->isNumeral() || s.isNumeral() ) return false;
 	return getValue() == s.getValue();
       }
     
@@ -1162,11 +1169,15 @@ namespace Symath {
     if ( isNegateOp() ) os << NEG;
     if ( parens ) os << OPR;
     if ( _left )  _left->printInfix( os, _op != DIV ? this_op : TIMES );
+    
     if ( _op != NOP && !isNegateOp() ) os << _op;
-    else if ( !isNegateOp() && !isEmpty(getValue()) && getValue().at(0) == '#' ) os << getValue().substr(1);
+    else if ( this->isNumeral() && !isNegateOp() ) os << _integer;
     else if ( !isNegateOp() )  os << getValue();
+
     if ( _right ) _right->printInfix( os, this_op );
     if ( parens ) os << CPR;
+
+    //std::cout << "<" << getValue() << ">";
     return os;
   }
       
