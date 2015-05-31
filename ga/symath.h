@@ -894,7 +894,7 @@ namespace Symath {
     // Gather all additive subexpressions into a flat list
     SymPVec addexps;
     norm.getAdditiveSubexps(&addexps);
-    
+    // loop over additive expressions
     for (SymPVecIter aiter = addexps.begin(), aend = addexps.end(); aiter != aend; ++aiter)
       {
 	// for each +subexp, gather multiplicitve subexpressions into flat list
@@ -902,23 +902,24 @@ namespace Symath {
 	bool neg = (*aiter)->getMultiplicitiveSubexps(&multexps);
 	if (multexps.size() > 1)  // more than one subexpression
 	  {
+	    // loop over multiplicitive expressions
 	    for (SymPVecIter miter = multexps.begin(), mend = multexps.end(); miter != mend; ++miter)
 	      {
-		// recurse, sortedize these sub expressions first
+		// recurse, sorted these sub expressions first
 		(*miter) = (*miter)->sortedForm(false).copyMaybe();
 	      }
 	    // sort * subexps
 	    multexps.sort(sym_ptr_comp);
-	    // rebuild multiplicitive expression tree from sortedized subexps
+
+	    // rebuild multiplicitive expression tree from sortedd subexps
 	    Sym mexp(one());
 	    if ( neg )	    // don't forget to return the negative we stripped off
 	      mexp = -mexp; // keep negates as close to leaves as possible
-
 	    for (SymPVecIter miter = multexps.begin(), mend = multexps.end(); miter != mend; ++miter)
 	      {
 		mexp = mexp * *(*miter);
 	      }
-
+	    // replace expression in list
 	    (*aiter) = mexp.copyMaybe();
 	  }
 	else // only one expression, do not recurse, put the negative back tho
@@ -938,7 +939,7 @@ namespace Symath {
     return aexp;
   }
 
-  // +/- rational scale factor applied to a symbol
+  // +/- rational scale factor applied to an expression ex: 2*a*3/-2 --> -3
   Sym GetMultiple() const {
     if ( this->isRational() ) return *this;
     if ( this->isNegateOp() ) return -(this->_left->GetMultiple());
@@ -956,11 +957,13 @@ namespace Symath {
   }
       
   //-----------------------------------------------------------------------------
-  /// search for sub-expressions that sum to zero, eliminate them
-  /// sortedize_form = true applies transformations to stadardize the expression form
-  Sym normalForm(bool sortedize_form = true) const
+  // distributes, sorts, and combines expressions.
+  //  (a + b) * (b + a) --> a*a + 2*a*b + b*b
+  // the == compare operator should return true when any pair if equivalent expressions
+  // are both in normal form.  ie   -a * (b - a) + 3*a*b - b*-b --> a*a + 2ab + b*b
+  Sym normalForm(bool sorted_form = true) const
   {
-    Sym std_form = sortedize_form ? this->sortedForm() : (*this);
+    Sym std_form = sorted_form ? this->sortedForm() : (*this);
     // no additive subexpressions to cancel at this level, recurse on subexpressions.
     if ( ! (std_form._op == PLUS || std_form.isMinusOp()) )
       {
@@ -978,8 +981,7 @@ namespace Symath {
        
     if ( subexps.size() <= 1 ) std::cerr << "badness in cancel" << std::endl;
   
-    /// double loop checking to see if any subexpression will cancel each others
-    ///   if they do, remove both from list, O(N^2)
+    /// double loop, summs up the multiplicity of repeated subexpressions, eliminates those that sum to 0
     SymPVecIter spviA = subexps.begin();
     while ( spviA != subexps.end() ) 
       {
@@ -998,7 +1000,7 @@ namespace Symath {
 
 	SymPVecIter spviB = spviA;
 	++spviB;
-	while ( spviB != subexps.end() ) // check against every other
+	while ( spviB != subexps.end() ) // check against every other remaining expression
 	  {
 	    if ( !(*spviB) ) std::cerr << " BOMB " << std::endl;
 	    Sym& right_exp = **spviB;
@@ -1012,7 +1014,7 @@ namespace Symath {
 	    Sym right = (right_exp / right_multiple).sortedForm();
 	    if ( left == right ) // A match!
 	      {
-		// sum their multiples:  3a + (1/3)a == (3+1/3)a
+		// sum their multiples:  3a + (1/3)a == 10/3a
 		new_multiple = new_multiple + right_multiple;
 		// delete duplicate expression
 		subexps.erase(spviB++);
@@ -1045,7 +1047,7 @@ namespace Symath {
     Sym sym(zero());
     for (SymPVecIter iter = subexps.begin(), end = subexps.end(); iter != end; ++iter)
       {
-	// recurse on sub-expressions, no need to sortedize again.
+	// recurse on sub-expressions, no need to sorted again.
 	Sym canceled = (*iter)->normalForm(false);
 	sym = sym + canceled;
       }

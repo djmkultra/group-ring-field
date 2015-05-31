@@ -94,7 +94,7 @@ int main( int argc, char** argv )
    S w = -(a*a+(b + a)*a+b);
    S y = a * (a) + S(4) * (b - a * a - b) / S(4) - -c; 
 
-   cout << " v and y are equivalent expressions, we can't tell with out simplification to sorted form " << endl;
+   cout << " v and y are equivalent expressions, we can't tell without simplification to normal form " << endl;
    cout << " v = -(a*a+b) + 1/2*c + c*1/2 + (a*a+b) = " << v << endl;
    cout << " w = -(a*a+(b + a)*a+b)                 = " << w << endl;
    cout << " y = a*(a) + 4 * (b - a*a + b) / 4 - -c = " << y << endl;
