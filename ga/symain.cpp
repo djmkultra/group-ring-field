@@ -2,7 +2,7 @@
 
 #include "symath.h"
 
-typedef Symath::Symbol S;
+typedef Symath::Sym S;
 using namespace Symath;
 using namespace std;
 
@@ -20,11 +20,21 @@ int main( int argc, char** argv )
   S w3("w3");
   S Wsa = (one+-one/S(2)*(w1*w1+w2*w2+w3*w3)/S(2)); 
   S Wsb = (one+(w1*w1+w2*w2+w3*w3)/S(2));
+  S Wsab = Wsa * Wsb;
   
   std::cout << " Wsa      " << Wsa << std::endl;
   std::cout << " Wsa dist " << Wsa.distribute() << std::endl;
   std::cout << " Wsa norm " << Wsa.normalForm() << std::endl;
   std::cout << " Wsa cncl " << Wsa.cancelAdditions() << std::endl << std::endl;
+  std::cout << " Wsb      " << Wsb << std::endl;
+  std::cout << " Wsb dist " << Wsb.distribute() << std::endl;
+  std::cout << " Wsb norm " << Wsb.normalForm() << std::endl;
+  std::cout << " Wsb cncl " << Wsb.cancelAdditions() << std::endl << std::endl;
+  std::cout << " Wsab      " << Wsab << std::endl;
+  std::cout << " Wsab dist " << Wsab.distribute() << std::endl;
+  std::cout << " Wsab norm " << Wsab.normalForm() << std::endl;
+  std::cout << " Wsab cncl " << Wsab.cancelAdditions() << std::endl << std::endl;
+  std::cout << " Wsab - Wsab " << (Wsab - Wsab).cancelAdditions() << std::endl;
 
   S  a("a");
   S  b("b");
@@ -53,11 +63,11 @@ int main( int argc, char** argv )
    cout << " normalized g" << g.normalForm() << endl << endl;
 
    cout << " negs " << endl;
-   cout << " -( -S(ONE) * a * (-a - b) + -(-(a + b)) ) = " << -( -S(ONE) * a * (-a - b) + -(-(a + b)) ) << endl;
+   cout << " -( -S(1) * a * (-a - b) + -(-(a + b)) ) = " << -( -S(1) * a * (-a - b) + -(-(a + b)) ) << endl;
    cout << "   = a * (-a - b) - (a + b) ^^ " << endl;
    cout << " -(-(a+b)) = " << -(-(a+b)) << endl;
-   cout << " -S(ONE) " << -S(ONE) << "   " << -S(ONE) * a << "  ... " << a * (-a - b) << endl;
-   cout << "  -S(ONE) * a * (-a - b) = " << -S(ONE) * a * (-a - b) << endl;
+   cout << " -S(1) " << -S(1) << "   " << -S(1) * a << "  ... " << a * (-a - b) << endl;
+   cout << "  -S(1) * a * (-a - b) = " << -S(1) * a * (-a - b) << endl;
 
    S h = (a+b-c+ d *(a-b+c) * c * a - b);
    cout << " add and muls -h = " << -(h) << endl;

@@ -84,7 +84,7 @@ namespace Symath {
   {}
             
   //-----------------------------------------------------------------------------
-  /// Create a variable : Sym a1("a1"); 
+  /// Create a variable : Sym a1("a1");  
   explicit Sym( const std::string& symbol ) 
     : _value(symbol), _op(), _left(0), _right(0), _integer(-0),
     _doppleganger(0), _is_doppleganger(false)
@@ -107,10 +107,6 @@ namespace Symath {
 	    ss >> _integer;
 	  }
 	_value = "#";  // The integer token, so we know it's not a variable.
-	if ( _integer < 0 )  // keep integers positive.
-	  {
-	    (*this) = -(Sym(-_integer));
-	  }
       }
   }
 
@@ -131,10 +127,7 @@ namespace Symath {
   explicit Sym( int i ) 
     : _value("#"), _op(), _left(0), _right(0), _integer(i),
     _doppleganger(0), _is_doppleganger(false) 
-  { 
-    if ( i < 0 )  // Keep integers positive.
-      (*this) = -(Sym(-i));
-  }
+  {}
       
   //-----------------------------------------------------------------------------
   //
@@ -186,7 +179,17 @@ namespace Symath {
   //-----------------------------------------------------------------------------
   /// assignment operator, shallow copy, shared pointers
   Sym &operator=(const Sym &s)  
-  { 
+  {
+    SymSP left = s._left;
+    SymSP right = s._right;
+    if ( this->_is_doppleganger )
+      { // Arghhhh if you got here you tried to re-assign a clone,
+	// but they need to be immutable so you don't change other expresions.
+	// Create a new symbol instead.
+	std::cerr << "Assignment to a clone not allowed, make a new symbol instead.\n";
+	assert( !this->_is_doppleganger );
+      }
+
     _value = s._value;
     _op = s._op;
     _left = s._left;
@@ -233,9 +236,32 @@ namespace Symath {
   bool isMinusOp() const { return (this->_op == "-" && _left && _right); }
   bool isZero() const { return isNumeral() && _integer == 0; }
   bool isOne() const { return isNumeral() && _integer == 1; }
+  bool isNegOne() const { return isNumeral() && _integer == -1; }
   bool isVariable() const { return isLeaf() && _op.empty() && !numberCheck(getValue()); }
   bool isNumeral() const { return isLeaf() && numberCheck(getValue()); }
+  bool isNumeralValue() const { return isNumeral() || (isNegateOp() && _left->isNumeralValue()); }
+  bool isRationalFraction() const {  // is this an integer / integer?
+    return _op == DIV && _left->isNumeral() && _right->isNumeral();
+  }
+  bool isRational() const { return isNumeral() || isRationalFraction(); }
+  bool isRationalValue() const { return isRational() || (isNegateOp() && _left->isRationalValue()); }
   bool isLeaf() const { return _right == 0 && _left == 0; }
+
+  /// Accessors for rational numbers
+  int getNumerator() const { 
+    if ( this->isNegateOp() && _left->isRationalValue() )
+      return -_left->getNumerator();   // note the numerator will get the negate
+    if ( this->isNumeral() ) return _integer;
+    if ( this->isRationalFraction() ) return _left->_integer;
+    return 1;
+  }
+  int getDenominator() const {
+    if ( this->isNegateOp() && _left->isRationalValue() )
+      return _left->getDenominator();  // no negate, we gave it to numerator.
+    if ( this->isRationalFraction() ) return _right->_integer;
+    return 1;
+  }
+
 
   //-----------------------------------------------------------------------------
   /// -(*this)  NEGATE uinary
@@ -247,9 +273,13 @@ namespace Symath {
 	return zero();
       }
          
-    if ( this->isNumeral() && _integer < 0 )
+    if ( this->isNumeralValue() )
       {
-	return Sym(-_integer);
+	return Sym(-getNumerator());
+      }
+    if ( this->isRationalValue() )
+      {
+	return Sym(-getNumerator()) / Sym(getDenominator());
       }
 
     /// --A -> A double negative
@@ -273,19 +303,20 @@ namespace Symath {
   //-----------------------------------------------------------------------------
   /// this * s  MUL
   Sym operator*( const Sym &s ) const   ///< MULTIPLICATION
-  {  
-    // 1 * 1 = 1 because one is weird...
-    if ( this->isOne() && s.isOne() )  
+  { 
+    // rationals 
+    // a/b * c/d = (ac)/(bd)
+    if ( this->isRationalValue() && s.isRationalValue() )
       {
-	return one();
+	return Sym( this->getNumerator() * s.getNumerator() ) / 
+	  Sym( this->getDenominator() * s.getDenominator() );
       }
-	 
+
     // 0 * x = 0
     if ( this->isZero() || s.isZero() )  
       {
 	return zero();
       }   
-
     // 1 * x
     if ( this->isOne() )
       {
@@ -296,13 +327,11 @@ namespace Symath {
       {
 	return *this;
       }
-
-    // numbers
-    if ( this->isNumeral() && s.isNumeral() )
+    if ( this->isNegOne() )
       {
-	return Sym( _integer * s._integer );
+	return -s;
       }
-
+ 
     /// Both sides are negates
     /// -l * -r = l * r
     if ( this->isNegateOp() && s.isNegateOp() )  /// both neg (now pos)
@@ -338,11 +367,7 @@ namespace Symath {
   Sym operator-( const Sym &s ) const 
   {
     /// a-a=0
-    if ( *this == s )   return zero();
-    
-    /// 1-1=0 because one is weird
-    // TODO not needed, handled by ==
-    if ( this->isOne() && s.isOne() ) 
+    if ( *this == s ) 
       {
 	return zero();
       }
@@ -356,12 +381,15 @@ namespace Symath {
       {
 	return *this;
       }
-    /// numbers
-    if ( this->isNumeral() && s.isNumeral() )
+
+    /// numbers a/b - c/d = (ad - cb)/(bd)
+    if ( this->isRationalValue() && s.isRationalValue() )
       {
-	return Sym(_integer - s._integer);
+	return Sym( this->getNumerator() * s.getDenominator() - 
+		    s.getNumerator() * this->getDenominator() ) /
+	  Sym( this->getDenominator() * s.getDenominator() );
       }
-    
+
     /// a--b = a+b
     if ( s.isNegateOp() )
       {
@@ -386,12 +414,13 @@ namespace Symath {
       {
 	return (*this);
       }
+
     if ( this->isZero() )
       {
 	return zero();
       }
     
-    // a/a = 1
+    // a/a = 1   NOTE: this may turn 0/0 into 1, I think that's bad....
     if ( (*this) == s ) 
       {
 	return one();
@@ -399,14 +428,38 @@ namespace Symath {
 
     if ( s.isZero() )
       {
-	std::cerr << "Sym operator/() dividion by zero!!!!!!!! (" << *this << " / " << s << std::endl ;
+	std::cerr << "Sym operator/() dividion by zero!!!!!!!! (";
+	printInfix(std::cerr) << " / ";
+	printInfix(std::cerr) << std::endl ;
 	return Sym("NaN");
+      }
+
+    // rationals a/b / c/d = a/b * d/c = ad/bc
+    // if both are integers don't recurse, make rational below
+    if ( !(this->isNumeralValue() && s.isNumeralValue()) &&  
+	 this->isRationalValue() && s.isRationalValue() )
+      {
+	return Sym( this->getNumerator() * s.getDenominator() ) /
+	  Sym( this->getDenominator() * s.getNumerator() );
+      }
+    if ( this->isNumeralValue() && s.isNumeralValue() )
+      {
+	int numerator = this->getNumerator();
+	int denominator = s.getNumerator();
+	if ( numerator == denominator )
+	  return one();
+	if ( numerator == -denominator )
+	  return Sym(-1);
       }
 
     // -a/-b  = a/b
     if ( this->isNegateOp() && s.isNegateOp() ) 
       {
 	return *_left / *s._left;
+      }
+    if ( s.isNumeralValue() && s.getNumerator() < 0 )
+      {
+	return (-*this) / Sym(-s.getNumerator());
       }
 
     // a/-b  = (-a)/b  TODO unnecessary reduction... messes up others
@@ -447,9 +500,17 @@ namespace Symath {
 	return *this;
       }
 
-    if ( this->isNumeral() && s.isNumeral() )
+    // rationals
+    // a/b + c/d = (ad + cb)/(bd)
+    if ( this->isRationalValue() && s.isRationalValue() )
       {
-	return Sym(_integer + s._integer);
+	int ldenom = this->getDenominator();
+	int rdenom = s.getDenominator(); 
+	if ( ldenom != rdenom )
+	  return Sym( this->getNumerator() * rdenom  +  ldenom * s.getNumerator() ) /
+	    Sym( ldenom * rdenom );
+	return Sym( this->getNumerator() + s.getNumerator() ) /
+	  Sym( ldenom );
       }
    
     // neg right, check for cancellation
@@ -478,22 +539,19 @@ namespace Symath {
   { 
     return *this = *this + s;
   }
-      
-  //-----------------------------------------------------------------------------
-  // I forget why we need this...
-  operator bool() const 
-  { 
-    return !isZero();
-  }
 
   //-----------------------------------------------------------------------------
   // important for generating the "normalForm"
   bool operator<( const Sym &s ) const
   {
-    // integers are the least of all.
-    if ( this->isNumeral() && s.isNumeral() ) return _integer < s._integer;
-    if ( this->isNumeral() ) return true;
-    if ( s.isNumeral() ) return false;
+    // integers need to go at the end for normal form to work right now
+    if ( this->isRationalValue() && s.isRationalValue() ) 
+      {
+	return this->getNumerator() * s.getDenominator() < 
+	  s.getNumerator() * this->getDenominator();
+      }
+    if ( this->isRationalValue() ) return true;
+    if ( s.isRationalValue() ) return false;
 
     // ignore negates for comparison, unless we have -a vs a
     // -a < a, but a < -b 
@@ -596,6 +654,13 @@ namespace Symath {
   // (a + b) * (c + d) = ac + bc + ad + bd (sum of products only)
   Sym distribute() const {
 
+    if ( isRational() ) return *this;  // effectively a leaf, could be #1/#2
+    if ( isRationalValue() ) // we have one or more negates infront of a number
+      {
+	// negates get reduced and folded into integers
+	return Sym( this->getNumerator() ) / Sym( this->getDenominator() );
+      }
+
     if ( isNegateOp() ) // push negates down to leaves of product expressions -(a*b) --> (-a) * b
       {
 	if ( _left->_op == TIMES ) // -(a * b) --> (-a) * b
@@ -620,7 +685,7 @@ namespace Symath {
 	  }
 	if (!_left->isLeaf())
 	  {
-	    std::cout << " **** WTF **** ";
+	    std::cerr << " **** WTF **** ";
 	  }
       }
 
@@ -636,21 +701,26 @@ namespace Symath {
 
 	Sym right = _right->distribute();
 
-	if ( left._op == DIV && right._op == DIV ) // (a / b) * (c / d) --> (a*c) / (b * d)
+	// (a / b) * (c / d) --> (a*c) / (b * d)
+	if ( left._op == DIV && right._op == DIV ) 
 	  return ((*left._left * *right._left) / (*left._right * *right._right)).distribute();
 
-	if ( left._op == DIV ) // (a / b) * c --> c * (a / b)
+	// (a / b) * c --> c * (a / b)
+	if ( left._op == DIV ) 
 	  return (right * left).distribute();
 
-	if ( right._op == PLUS ) // a * (b + c)  --> (a*b) + (a*c)
+	// a * (b + c)  --> (a*b) + (a*c)
+	if ( right._op == PLUS ) 
 	  return ((left * *right._left) + (left * *right._right)).distribute();
 
-	if ( right.isMinusOp() ) // a * (b - c)  --> (a*b) - (a*c)
+	// a * (b - c)  --> (a*b) - (a*c)
+	if ( right.isMinusOp() ) 
 	  return ((left * *right._left) - (left * *right._right)).distribute();
 
 	if ( left._op == TIMES )
-	  {
-	    if (left._right->_op == DIV) // (a*(b/c))*d --> (a*b*d)/c
+	  { 
+	    // (a * (b / c))*d --> (a*b*d)/c  // looks like this could be a*(b/c) --> (a*b)/c
+	    if (left._right->_op == DIV) 
 	      return ((*left._left * *left._right->_left * right) / *left._right->_right).distribute();
 	  }
 
@@ -681,8 +751,17 @@ namespace Symath {
 
 	if ( right._op == DIV ) //  a / (b / c) --> (a*c)/b
 	  return (( left * *right._right ) / *right._left).distribute();
+	
+	if ( !(left.isNumeralValue() && right.isNumeralValue()) &&
+ 	    left.isRationalValue() && right.isRationalValue() )
+	  {
+	    std::cerr << "how the fuck";
+	    return Sym(left.getNumerator() * right.getDenominator()) /
+	      Sym(left.getDenominator() * right.getNumerator());
+	  }
 
-	if ( ! (left.isOne() || (left.isNegateOp() && left._left->isOne()))  )  // a / b --> a * (1/b)
+	// a / b --> a * (1/b) (unless they are rationals)
+	if ( ! (left.isOne() || left.isNegOne())  )  
 	  return (left * ( one() / right)).distribute();
 
 	return left / right;
@@ -827,13 +906,13 @@ namespace Symath {
 	    multexps.sort(sym_ptr_comp);
 	    // rebuild multiplicitive expression tree from normalized subexps
 	    Sym mexp(one());
+	    if ( neg )	    // don't forget to return the negative we stripped off
+	      mexp = -mexp; // keep negates as close to leaves as possible
 
 	    for (SymPVecIter miter = multexps.begin(), mend = multexps.end(); miter != mend; ++miter)
 	      {
 		mexp = mexp * *(*miter);
 	      }
-	    if ( neg )	    // don't forget to return the negative we stripped off
-	      mexp = -mexp; // keep negates as close to leaves as possible
 
 	    (*aiter) = mexp.copyMaybe();
 	  }
@@ -852,6 +931,23 @@ namespace Symath {
 	aexp = aexp + *(*aiter);
       }
     return aexp;
+  }
+
+  // +/- rational scale factor applied to a symbol
+  Sym GetMultiple() const {
+    if ( this->isRational() ) return *this;
+    if ( this->isNegateOp() ) return -(this->_left->GetMultiple());
+    if (!(_op == TIMES || _op == DIV)) return one();
+    if ( _op == TIMES )
+      {
+	return _left->GetMultiple() * _right->GetMultiple();
+      }
+    if ( _op == DIV )
+      {
+	return _left->GetMultiple() / _right->GetMultiple();
+      }
+    std::cerr << " Should not get here " << std::endl;
+    return one();
   }
       
   //-----------------------------------------------------------------------------
@@ -883,50 +979,75 @@ namespace Symath {
     while ( spviA != subexps.end() ) 
       {
 	if ( !(*spviA) ) std::cerr << " BOOM " << std::endl;
-	Sym& left = **spviA;
-	if ( left.isZero() )  // already zero, remove
+	Sym& left_exp = **spviA;
+	if ( left_exp.isZero() )  // already zero, remove
 	  {
 	    subexps.erase(spviA++);
 	    continue;
 	  }
-	bool increment = true;  // if we erase, we will have already incremented.
+       
+	Sym left_multiple = left_exp.GetMultiple();
+	Sym left = (left_exp / left_multiple).normalForm();
+
+	Sym new_multiple = left_multiple; 
+
 	SymPVecIter spviB = spviA;
 	++spviB;
 	while ( spviB != subexps.end() ) // check against every other
 	  {
 	    if ( !(*spviB) ) std::cerr << " BOMB " << std::endl;
-	    Sym& right = **spviB;
+	    Sym& right_exp = **spviB;
+	    Sym right_multiple = right_exp.GetMultiple();
 	    /// is 0, remove
-	    if ( right.isZero() )
+	    if ( right_exp.isZero() || right_multiple.isZero() )
 	      {
 		subexps.erase(spviB++);
 		continue;
 	      }
-	    ///  -left + right
-	    if ( left.isNegateOp() && !right.isNegateOp() )
+	    Sym right = (right_exp / right_multiple).normalForm();
+	    if ( left == right ) // A match!
 	      {
-		if ( *left._left == right )
-		  {  // CANCEL, nuke both
-		    increment = false;
-		    subexps.erase(spviB);   // you MUST delete this one first
-		    subexps.erase(spviA++); // so this increment works
-		    break;
-		  }
+		// sum their multiples:  3a + (1/3)a == (3+1/3)a
+		new_multiple = new_multiple + right_multiple;
+		// delete duplicate expression
+		subexps.erase(spviB++);
+		continue;
 	      }
-	    else if ( !left.isNegateOp() && right.isNegateOp() )
-	      {  //      left + -right = 0
-		if ( left == *right._left )
-                  {  // CANCEL, nuke
-		    increment = false;
-		    subexps.erase(spviB);   // same as above
-		    subexps.erase(spviA++);
-		    break;
-                  }
+	    if ( left.isNegateOp() || right.isNegateOp() ) 
+	      {
+		std::cerr << " not unitary " << left.toString() << "," << left.isNegateOp() << "," << left._op << "," << left._value
+			  << " or " << right.toString() << "," << right.isNegateOp() << "," << right._op << "," << right._value
+			  << " from " << left_exp.toString() << "  and  " << right_exp.toString() 
+			  << " mags " << left_multiple.toString() << "   " << right_multiple.toString() <<  "  " << toString() << " leaf? " << isLeaf() 
+			  << " " << std::endl;
+		printInfix(std::cerr);
 	      }
 	    ++spviB;
 	  } /// end while B
-	if (increment) 
-	  ++spviA;
+
+	if ( new_multiple.isZero() ) 
+	  { // we can remove left, there are none
+	    subexps.erase(spviA++);
+	    continue;
+	  }
+
+	//std::cout << " left " << left_exp.toString() << "  ~left " << left.toString() << " x " << new_multiple.toString() << " vs " << left_multiple.toString() << std::endl;
+
+	Sym mul_sym = new_multiple * left;
+	//std::cout << " hi again " << mul_sym.toString() << std::endl;
+
+	// build the new summed expression. Don't introduce products with 1 or -1
+	if ( new_multiple == Sym(-1) )
+	  *spviA = new Sym(-left);  // have to copy since we are assigning ourself.
+	else if ( new_multiple == Sym(1) )
+	  *spviA = new Sym(left);
+	else if ( !(new_multiple == left_multiple) )
+	  {
+	    //std::cout << " hi " << (new_multiple * left).toString() << std::endl;
+	    SymSP symsp = new Sym((new_multiple * left));
+	    *spviA = symsp;
+	  }
+	++spviA;
       } /// end while A
 
     // Assemble new expression.
@@ -1019,12 +1140,19 @@ namespace Symath {
     return os;
   }
       
+  std::string toString() const 
+  {
+    std::stringstream ss;
+    printInfix(ss);
+    return ss.str();
+  }
+  
   std::ostream& printInfix( std::ostream &os, const std::string &last_op = NOP ) const
   {
     bool parens = true;
     if ( last_op == NOP || last_op == PLUS || last_op == MINUS || isLeaf() ) parens = false; 
     if ( _op == TIMES || _op == DIV ) parens = false;
-    if ( isNegateOp() ) parens = false;
+    if ( isNegateOp() ) parens = true;
     if ( last_op == DIV && _op != NOP ) parens = true;
 
     // treat negate as -1 * x so we don't confuse neg and minus
@@ -1034,7 +1162,12 @@ namespace Symath {
     if ( parens ) os << OPR;
     if ( _left )  _left->printInfix( os, _op != DIV ? this_op : TIMES );
     
-    if ( _op != NOP && !isNegateOp() ) os << _op;
+    if ( _op != NOP && !isNegateOp() )
+      {
+	if (_op == PLUS) os << " ";
+	os << _op;
+	if (_op == PLUS) os << " ";
+      }
     else if ( this->isNumeral() && !isNegateOp() ) os << _integer;
     else if ( !isNegateOp() && !getValue().empty())  os << getValue();
     else if ( !isNegateOp() && getValue().empty() ) os << "?<" << _op << "|" << _integer << ">";

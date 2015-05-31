@@ -303,13 +303,13 @@ template<class T, class B=E<4,1> >
     const value_type &ve2 = value_type(0), /// basis element e1 e.g. y
     const value_type &ve3 = value_type(0)) /// basis element e2 e.g. z
  {
-   if ( scalar )
+   if ( !(value_type(0) == scalar) )
      _coefs[basis_type(0)] = scalar;
-   if ( ve1 )
+   if ( !(value_type(0) == ve1) )
      _coefs[basis_type(1)] = ve1;
-   if ( ve2 )
+   if ( !(value_type(0) == ve2) )
      _coefs[basis_type(2)] = ve2;
-   if ( ve3 )
+   if ( !(value_type(0) == ve3) )
      _coefs[basis_type(3)] = ve3;
  }
 
@@ -732,7 +732,7 @@ template<class T, class B=E<4,1> >
 	 }
        else
 	 {
-	   if ( (*emi).second > 0 )
+	   if ( value_type(0) < (*emi).second )
 	     os << " + " << (*emi).second;
 	   else  // make negative component into a subtraction, no +-Nem
 	     os << " - " << -(*emi).second;

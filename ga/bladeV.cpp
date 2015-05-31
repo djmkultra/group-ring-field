@@ -15,6 +15,11 @@ int main( int argc, char **argv )
   GOf A(0.0, 1.0, 2.0, 3.0);
   GOsym As(S("0"), S("a1"), S("a2"), S("a3"));
 
+  GOsym Ws = GOsym::conformal(S("w1"),S("w2"),S("w3"));
+  std::cout << " Ws =          " << Ws << std::endl;
+  std::cout << " Ws.Ws = " << inner(Ws,Ws) << std::endl << std::endl;
+  std::cout << " Ws.Ws = " << simplify(inner(Ws,Ws)) << std::endl << std::endl;
+
   /// Conformal zero vector
   GOsym N0 = GOsym::conformal(S("0"),S("0"),S("0"));
   std::cout << " N0 = " << N0 << " = " << GOsym::n0() << std::endl;
@@ -45,7 +50,7 @@ int main( int argc, char **argv )
   std::cout << " Y " << Y << "  Y.Y = " << inner(Y,Y) << std::endl;
   std::cout << " W.Y = " << inner(W,Y) << "  = -1/2(|w-y|)^2 " << std::endl; 
   std::cout << " ni.W = -coeff(n0) = -1 : " << inner(GOf::ni(),W) << std::endl;
-  GOsym Ws = GOsym::conformal(S("w1"),S("w2"),S("w3"));
+  //GOsym Ws = GOsym::conformal(S("w1"),S("w2"),S("w3"));
   std::cout << " Ws =          " << Ws << std::endl;
   std::cout << " Ws.distribute " << simplify(Ws) << std::endl;
   std::cout << " Ws.Ws = " << inner(Ws,Ws) << std::endl;
@@ -87,7 +92,8 @@ int main( int argc, char **argv )
   /// Test the translation versor
   GOsym Tr = GOsym::translateVersor(As);
   std::cout << " Tr(A)      = " << Tr << std::endl;
-  std::cout << " Tr(A)^(-1) = " << Tr.inverse() << std::endl << std::endl;
+  std::cout << " Tr(A)^(-1) = " << Tr.inverse() << std::endl;
+  std::cout << " Tr(A)Tr(A)^(-1) = " << Tr*Tr.inverse() << std::endl << std::endl;
   GOf Ef1(1,e1,1,e2,1,e3);
   GOf T = GOf::translateVersor(Ef1);
   std::cout << " W          " << W << std::endl;
