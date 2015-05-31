@@ -877,7 +877,7 @@ namespace Symath {
     }
   } sym_ptr_comp;
 
-  Sym normalForm(bool distrib = true) const {
+  Sym sortedForm(bool distrib = true) const {
     if ( isLeaf() )
       return *this;
 
@@ -899,12 +899,12 @@ namespace Symath {
 	  {
 	    for (SymPVecIter miter = multexps.begin(), mend = multexps.end(); miter != mend; ++miter)
 	      {
-		// recurse, normalize these sub expressions first
-		(*miter) = (*miter)->normalForm(false).copyMaybe();
+		// recurse, sortedize these sub expressions first
+		(*miter) = (*miter)->sortedForm(false).copyMaybe();
 	      }
 	    // sort * subexps
 	    multexps.sort(sym_ptr_comp);
-	    // rebuild multiplicitive expression tree from normalized subexps
+	    // rebuild multiplicitive expression tree from sortedized subexps
 	    Sym mexp(one());
 	    if ( neg )	    // don't forget to return the negative we stripped off
 	      mexp = -mexp; // keep negates as close to leaves as possible
@@ -952,17 +952,17 @@ namespace Symath {
       
   //-----------------------------------------------------------------------------
   /// search for sub-expressions that sum to zero, eliminate them
-  /// normalize_form = true applies transformations to stadardize the expression form
-  Sym cancelAdditions(bool normalize_form = true) const
+  /// sortedize_form = true applies transformations to stadardize the expression form
+  Sym normalForm(bool sortedize_form = true) const
   {
-    Sym std_form = normalize_form ? this->normalForm() : (*this);
+    Sym std_form = sortedize_form ? this->sortedForm() : (*this);
     // no additive subexpressions to cancel at this level, recurse on subexpressions.
     if ( ! (std_form._op == PLUS || std_form.isMinusOp()) )
       {
 	if (std_form._left || std_form._right)  // carefull to never copy leaf nodes.
 	  return Sym(std_form._op, 
-		     std_form._left ? std_form._left->cancelAdditions().copyMaybe() : NULL,
-		     std_form._right ? std_form._right->cancelAdditions().copyMaybe() : NULL);
+		     std_form._left ? std_form._left->normalForm().copyMaybe() : NULL,
+		     std_form._right ? std_form._right->normalForm().copyMaybe() : NULL);
 	return *this;
       }
 
@@ -987,7 +987,7 @@ namespace Symath {
 	  }
        
 	Sym left_multiple = left_exp.GetMultiple();
-	Sym left = (left_exp / left_multiple).normalForm();
+	Sym left = (left_exp / left_multiple).sortedForm();
 
 	Sym new_multiple = left_multiple; 
 
@@ -1004,7 +1004,7 @@ namespace Symath {
 		subexps.erase(spviB++);
 		continue;
 	      }
-	    Sym right = (right_exp / right_multiple).normalForm();
+	    Sym right = (right_exp / right_multiple).sortedForm();
 	    if ( left == right ) // A match!
 	      {
 		// sum their multiples:  3a + (1/3)a == (3+1/3)a
@@ -1012,15 +1012,6 @@ namespace Symath {
 		// delete duplicate expression
 		subexps.erase(spviB++);
 		continue;
-	      }
-	    if ( left.isNegateOp() || right.isNegateOp() ) 
-	      {
-		std::cerr << " not unitary " << left.toString() << "," << left.isNegateOp() << "," << left._op << "," << left._value
-			  << " or " << right.toString() << "," << right.isNegateOp() << "," << right._op << "," << right._value
-			  << " from " << left_exp.toString() << "  and  " << right_exp.toString() 
-			  << " mags " << left_multiple.toString() << "   " << right_multiple.toString() <<  "  " << toString() << " leaf? " << isLeaf() 
-			  << " " << std::endl;
-		printInfix(std::cerr);
 	      }
 	    ++spviB;
 	  } /// end while B
@@ -1054,8 +1045,8 @@ namespace Symath {
     Sym sym(zero());
     for (SymPVecIter iter = subexps.begin(), end = subexps.end(); iter != end; ++iter)
       {
-	// recurse on sub-expressions, no need to normalize again.
-	Sym canceled = (*iter)->cancelAdditions(false);
+	// recurse on sub-expressions, no need to sortedize again.
+	Sym canceled = (*iter)->normalForm(false);
 	sym = sym + canceled;
       }
 
@@ -1152,10 +1143,10 @@ namespace Symath {
     bool parens = true;
     if ( last_op == NOP || last_op == PLUS || last_op == MINUS || isLeaf() ) parens = false; 
     if ( _op == TIMES || _op == DIV ) parens = false;
-    if ( isNegateOp() ) parens = true;
+    if ( isNegateOp() ) parens = false;
     if ( last_op == DIV && _op != NOP ) parens = true;
 
-    // treat negate as -1 * x so we don't confuse neg and minus
+    // treat negate as -1 * x so we don't confuse neg and minus when we recurse
     std::string this_op = isNegateOp() ? TIMES : _op;
 
     if ( isNegateOp() ) os << NEG;
@@ -1164,9 +1155,9 @@ namespace Symath {
     
     if ( _op != NOP && !isNegateOp() )
       {
-	if (_op == PLUS) os << " ";
+	if (_op == PLUS || isMinusOp()) os << " ";
 	os << _op;
-	if (_op == PLUS) os << " ";
+	if (_op == PLUS || isMinusOp()) os << " ";
       }
     else if ( this->isNumeral() && !isNegateOp() ) os << _integer;
     else if ( !isNegateOp() && !getValue().empty())  os << getValue();

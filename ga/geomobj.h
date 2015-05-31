@@ -748,7 +748,7 @@ template<class T, class B=E<4,1> >
 
 #ifdef __SYMBOLIC_MATHS_H
  Symath::Sym simplify(const Symath::Sym& sym) const { 
-   return sym.cancelAdditions(); 
+   return sym.normalForm(); 
  }
 #endif
 
@@ -860,16 +860,9 @@ GOsym simplify( const GOsym &g )
 
   for ( EMapIter emi = g._coefs.begin(); emi != g._coefs.end(); ++emi )
     {
-      Symath::Sym sca = (*emi).second.cancelAdditions();
- 
-      if ( sca == Symath::Sym::zero() )
-	{
-	  // do nothing
-	}
-      else
-	{
+      Symath::Sym sca = (*emi).second.normalForm();
+      if (!( sca == Symath::Sym::zero() ) )
 	  ret._coefs[(*emi).first] = sca;
-	}
     }
 
   return ret;

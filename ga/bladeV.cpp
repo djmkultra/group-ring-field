@@ -145,6 +145,7 @@ int main( int argc, char **argv )
 
   /// Right cotraction 
   std::cout << "Cs^BsLAs = right(Cs^Bs, As) = " << std::endl << right(wedge(Cs,Bs),As) << std::endl << std::endl; 
+  std::cout << "Cs^BsLBs = right(Cs^Bs, Bs) = " << std::endl << right(wedge(Cs,Bs),Bs) << std::endl << std::endl; 
 
   GOf D(0.0, -.5, -1.5, 1.0);
   GOsym Ds(S("0"), S("d1"), S("d2"), S("d3"));
