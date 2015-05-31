@@ -385,9 +385,13 @@ namespace Symath {
     /// numbers a/b - c/d = (ad - cb)/(bd)
     if ( this->isRationalValue() && s.isRationalValue() )
       {
-	return Sym( this->getNumerator() * s.getDenominator() - 
-		    s.getNumerator() * this->getDenominator() ) /
-	  Sym( this->getDenominator() * s.getDenominator() );
+	int ldenom = this->getDenominator();
+	int rdenom = s.getDenominator(); 
+	if ( ldenom != rdenom )
+	  return Sym( this->getNumerator() * rdenom  -  ldenom * s.getNumerator() ) /
+	    Sym( ldenom * rdenom );
+	return Sym( this->getNumerator() - s.getNumerator() ) /
+	  Sym( ldenom );
       }
 
     /// a--b = a+b
@@ -650,8 +654,10 @@ namespace Symath {
   }
                   
   //-----------------------------------------------------------------------------
-  // distribute products through sums, make sure all +/- are above * in tree
-  // (a + b) * (c + d) = ac + bc + ad + bd (sum of products only)
+  // distribute products through sums, 
+  // push negation down and to the left
+  // push division down and to the right
+  // (a/(-e) + b) * (c + d) = -(a)c/e + bc + -(a)d/e + bd (sum of products only)
   Sym distribute() const {
 
     if ( isRational() ) return *this;  // effectively a leaf, could be #1/#2
@@ -866,21 +872,20 @@ namespace Symath {
     return flip_sign;
   }
 
-  //--------------------------------------------------------------
-  // Returns an expression that is the sum of multiplies, with all 
-  // expressions sorted.  If two different but equivalent expressions
-  // are placed in normal form, we should be able to detect equivalence
-  // a*(a-b)+(a+b)(a+b)+c --> c + -a*b + a*a + a*a + a*b + a*b + b*b
   struct SymPComp {
     bool operator() (const SymSP& a, const SymSP& b) {
       return (*a) < (*b);
     }
   } sym_ptr_comp;
 
+  //--------------------------------------------------------------
+  // Returns an expression that is the sum of multiplies, with all 
+  // expressions sorted.  If two different but equivalent expressions
+  // are placed in normal form, we should be able to detect equivalence
+  // a*(a-b)+(a+b)(a+b)+c --> c + -a*b + a*a + a*a + a*b + a*b + b*b
   Sym sortedForm(bool distrib = true) const {
     if ( isLeaf() )
       return *this;
-
 
     // if |distrib| is false, we are probably inside a recursion, it's already done.
     // Distribute terms: make sum of products
@@ -1022,21 +1027,16 @@ namespace Symath {
 	    continue;
 	  }
 
-	//std::cout << " left " << left_exp.toString() << "  ~left " << left.toString() << " x " << new_multiple.toString() << " vs " << left_multiple.toString() << std::endl;
-
 	Sym mul_sym = new_multiple * left;
-	//std::cout << " hi again " << mul_sym.toString() << std::endl;
 
 	// build the new summed expression. Don't introduce products with 1 or -1
 	if ( new_multiple == Sym(-1) )
-	  *spviA = new Sym(-left);  // have to copy since we are assigning ourself.
+	  *spviA = (-left).copyMaybe();  // have to copy since we are assigning ourself.
 	else if ( new_multiple == Sym(1) )
-	  *spviA = new Sym(left);
+	  *spviA = left.copyMaybe();
 	else if ( !(new_multiple == left_multiple) )
 	  {
-	    //std::cout << " hi " << (new_multiple * left).toString() << std::endl;
-	    SymSP symsp = new Sym((new_multiple * left));
-	    *spviA = symsp;
+	    *spviA = (new_multiple * left).copyMaybe();
 	  }
 	++spviA;
       } /// end while A
