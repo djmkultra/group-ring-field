@@ -14,7 +14,27 @@ int main( int argc, char** argv )
 	    << S("1") << " T " << one.isOne() << std::endl;
   std::cout << " zero " << zero << " = " << S(zero) << " = " << S(0) << " = " 
 	    << S("0") << " T " << zero.isZero() << std::endl;
+
+  S a("a");
+  S b("b");
+  S c("c");
+  S d("d");
+
+
+  S d1 = ((a + S(2)) * (b + S(3)) * (b + S(4)));
+  //cout << " d1 = " << d1 << " == " << d1.normalForm() << endl;
+  S d2 = d1 / d1.normalForm();
+  cout << " d2 = " << d1 << " / " << d1.normalForm() << endl;
+  cout << "  =   " << d2 << endl;
+  cout << " d2.normalForm() " << endl;
+  cout << "  ==  " << d2.normalForm() << endl;
+
+  cout << endl;
+  S b1 = b / d1.normalForm();
+  S b2 = b / d1.normalForm();
+  cout << " b/d1 == b/d1 ? " << (b1 == b2) << endl;
   
+  cout << endl;
   S w1("w1");
   S w2("w2");
   S w3("w3");
@@ -36,14 +56,10 @@ int main( int argc, char** argv )
   std::cout << " Wsab norm " << Wsab.normalForm() << std::endl;
   std::cout << " Wsab - Wsab " << (Wsab - Wsab).normalForm() << std::endl << endl;
 
-  S  a("a");
-  S  b("b");
    
    cout << " a = " << a << "   b = " << b << endl;
    cout << " a*b = " << a*b << endl;
    
-   S c("c");
-   S d("d");
    
    cout << " a+b*c*c = " << a+b*c*c << endl;
 
