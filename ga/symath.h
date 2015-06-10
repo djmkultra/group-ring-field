@@ -56,9 +56,9 @@ namespace Symath {
       /// Key constants, you should use these!
   
       /// 1 the multiplicitve identity
-      static const Sym one() { return Sym(1); }
+      static const Sym one() { return Sym(1,1); }
       /// 0 the additive identity, multiplicitive null
-      static const Sym zero() { return Sym(0); }
+      static const Sym zero() { return Sym(0,1); }
 
      protected:
       //-----------------------------------------------------------------------------
@@ -84,23 +84,13 @@ namespace Symath {
 	 _numerator(1), _denominator(1),
 	 _doppleganger(0), _is_doppleganger(false)
       {}
-            
-      //-----------------------------------------------------------------------------
-      /// Create a variable : Sym a1("a1");  
-     Sym( const std::string& symbol ) 
-	 : _value(symbol), _op(), _left(0), _right(0),
-	 _numerator(-0), _denominator(-0),
-	 _doppleganger(0), _is_doppleganger(false)
-      {
-	 assert(!symbol.empty());
-      }
-      
+
       //-----------------------------------------------------------------------------
       /// rational constructor, #a/#b
-     Sym( int numerator, int denominator = 1 ) 
-	 : _value("#"), _op(), _left(), _right(),
-	 _numerator(numerator), _denominator(denominator),
-	 _doppleganger(0), _is_doppleganger(false) 
+      Sym( int numerator, int denominator = 1 ) 
+	: _value("#"), _op(), _left(), _right(),
+	_numerator(numerator), _denominator(denominator),
+	_doppleganger(0), _is_doppleganger(false) 
       {
 	 if (_denominator < 0)
 	 {
@@ -108,12 +98,35 @@ namespace Symath {
 	    _denominator = -_denominator;
 	 }
       }
+           
+      //-----------------------------------------------------------------------------
+      /// Create a variable : Sym a1("a1");  
+     explicit Sym( const std::string& symbol ) 
+	 : _value(symbol), _op(), _left(0), _right(0),
+	 _numerator(-0), _denominator(-0),
+	 _doppleganger(0), _is_doppleganger(false)
+      {
+	// For some bizzare reason, the compiler will choose this constructor rather than
+	// the integer version when you call Sym(0) or Sym(1) from a templated class... WTF?
+	if (symbol == "0") {
+	  _value = "#";
+	  _numerator = 0;
+	  _denominator = 1;
+	}
+	if (symbol == "1") {
+	  _value = "#";
+	  _numerator = 1;
+	  _denominator = 1;
+	}
+	assert(symbol != "-1");
+	assert(!symbol.empty());
+      }
       
       //-----------------------------------------------------------------------------
       //
       /// expression tree-node constructor
       //
-     Sym( const std::string & op,                ///< operation (intrisic symbol-values are NOP)
+     Sym( const std::string & op,                  ///< operation (intrisic symbol-values are NOP)
 	  SymSP                 left,              ///< left operand (0 if not relevant)
 	  SymSP                 right = SymSP(0) ) ///< right operand (0 if not relevant) 
 	: _value(), _op(op), _left(left), _right(right),
@@ -157,28 +170,26 @@ namespace Symath {
       //-----------------------------------------------------------------------------
       /// assignment operator, shallow copy, shared pointers
       Sym &operator=(const Sym &s)  
-	 {
-	    SymSP left = s._left;
-	    SymSP right = s._right;
-	    if ( this->_is_doppleganger )
-	    { // Arghhhh if you got here you tried to re-assign a clone,
-	       // but they need to be immutable so you don't change other expresions.
-	       // Create a new symbol instead.
-	       std::cerr << "Assignment to a clone not allowed, make a new symbol instead.\n";
-	       assert( !this->_is_doppleganger );
-	    }
-
-	    _value = s._value;
-	    _op = s._op;
-	    _left = s._left;
-	    _right = s._right;
-	    _doppleganger = s._doppleganger;
-	    _numerator = s._numerator;
-	    _denominator = s._denominator;
-	    if ( s._is_doppleganger )
-	       _doppleganger = s.copyMaybe();
-	    return *this;
-	 }
+      {
+	if ( this->_is_doppleganger )
+	{ // Arghhhh if you got here you tried to re-assign a clone,
+	  // but they need to be immutable so you don't change other expresions.
+	  // Create a new symbol instead.
+	  std::cerr << "Assignment to a clone not allowed, make a new symbol instead.\n";
+	  assert( !this->_is_doppleganger );
+	}
+	
+	_value = s._value;
+	_op = s._op;
+	_left = s._left;
+	_right = s._right;
+	_doppleganger = s._doppleganger;
+	_numerator = s._numerator;
+	_denominator = s._denominator;
+	if ( s._is_doppleganger )
+	  _doppleganger = s.copyMaybe();
+	return *this;
+      }
       
       /// get symbol expression string
       const std::string &getValue() const { return _value; }
@@ -192,9 +203,9 @@ namespace Symath {
       // It's tricky to tell the difference between minus and negate, these help
       bool isNegateOp() const { return (this->_op == "-" && _left && !_right); }
       bool isMinusOp() const { return (this->_op == "-" && _left && _right); }
-      bool isZero() const { return isRational() && _numerator == 0; }
-      bool isOne() const { return isRational() && _numerator == _denominator; }
-      bool isNegOne() const { return isRational() && _numerator == -_denominator; }
+      bool isZero() const { return isRationalValue() && getNumerator() == 0; }
+      bool isOne() const { return isRationalValue() && getNumerator() == getDenominator(); }
+      bool isNegOne() const { return isRationalValue() && getNumerator() == -getDenominator(); }
       bool isVariable() const { return isLeaf() && _op.empty() && !numberCheck(getValue()); }
       bool isRational() const { return numberCheck(getValue()); }
       bool isRationalValue() const { return isRational() || (isNegateOp() && _left->isRationalValue()); }
@@ -252,18 +263,18 @@ namespace Symath {
       /// this * s  MUL
       Sym operator*( const Sym &s ) const   ///< MULTIPLICATION
       { 
-	 // rationals 
-	 // a/b * c/d = (ac)/(bd)
-	 if ( this->isRationalValue() && s.isRationalValue() )
-	 {
-	    return Sym( this->getNumerator() * s.getNumerator(), this->getDenominator() * s.getDenominator() );
-	 }
-
 	 // 0 * x = 0
 	 if ( this->isZero() || s.isZero() )  
 	 {
 	    return zero();
 	 }   
+	 // rationals 
+	 // a/b * c/d = (ac)/(bd)
+	 if ( this->isRationalValue() && s.isRationalValue() )
+	 {
+	   //std::cout << "detected rational: " << this->toString() << "," << s.toString()  << std::endl;
+	    return Sym( this->getNumerator() * s.getNumerator(), this->getDenominator() * s.getDenominator() );
+	 }
 	 // 1 * x
 	 if ( this->isOne() )
 	 {
@@ -298,9 +309,9 @@ namespace Symath {
 	 }
 
 	 /// regular old *
-	 return Sym(	TIMES, 
-			this->copyMaybe(), 
-			s.copyMaybe() );
+	 return Sym( TIMES, 
+		     this->copyMaybe(), 
+		     s.copyMaybe() );
       }
 
       //-----------------------------------------------------------------------------
@@ -377,9 +388,8 @@ namespace Symath {
 
 	 if ( s.isZero() )
 	 {
-	    std::cerr << "Sym operator/() dividion by zero!!!!!!!! (";
-	    printInfix(std::cerr) << " / ";
-	    printInfix(std::cerr) << std::endl ;
+	    std::cerr << "Sym operator/() dividion by zero!!!!!!!! (" 
+		      << this->toString() << " / " << s.toString() << std::endl;
 	    return Sym("NaN");
 	 }
 
@@ -587,7 +597,7 @@ namespace Symath {
       Sym distribute() const {
 
 	 if ( isRational() ) return *this;  // effectively a leaf, could be #1/#2
-	 if ( isRationalValue() ) // we have one or more negates infront of a number
+	 if ( isRationalValue() ) // we have one or more negates in front of a number
 	 {
 	    return Sym( this->getNumerator(), this->getDenominator() );
 	 }
@@ -618,6 +628,7 @@ namespace Symath {
 	    {
 	       std::cerr << " **** WTF **** ";
 	    }
+	    return - _left->distribute();
 	 }
 
 	 if ( _op == TIMES )  // l*r
@@ -632,7 +643,7 @@ namespace Symath {
 
 	    Sym right = _right->distribute();
 
-	    if ( right.isRational() )
+	    if ( right.isRational() )  // Move rational to the left.
 	       return right * left;
 	    
 	    // (a / b) * (c / d) --> (a*c) / (b * d)
@@ -659,7 +670,7 @@ namespace Symath {
 	    }
 
 	    // We tried, did left, did right, but no luck, done.
-	    return *this;
+	    return left * right;
 	 }
     
 	 if ( _op == DIV ) // l/r
@@ -735,9 +746,10 @@ namespace Symath {
 	    }
 	 }
 
-	 return Sym(_op,
-		    _left ? _left->makeAdditive().copyMaybe() : NULL,
-		    _right ? _right->makeAdditive().copyMaybe() : NULL);
+	 return *this;
+	 // return Sym(_op,
+	 //	    _left ? _left->makeAdditive().copyMaybe() : NULL,
+	 //	    _right ? _right->makeAdditive().copyMaybe() : NULL);
       }
 
       //-----------------------------------------------------------------------------
@@ -890,11 +902,16 @@ namespace Symath {
 	 // no additive subexpressions to cancel at this level, recurse on subexpressions.
 	 if ( ! (std_form._op == PLUS || std_form.isMinusOp()) )
 	 {
-	    if (std_form._left || std_form._right)  // carefull to never copy leaf nodes.
-	       return Sym(std_form._op, 
-			  std_form._left ? std_form._left->normalForm().copyMaybe() : NULL,
-			  std_form._right ? std_form._right->normalForm().copyMaybe() : NULL);
-	    return *this;
+	   if (std_form._left || std_form._right) {  // carefull to never copy leaf nodes.
+	     if (std_form._op == TIMES) {
+	       return std_form._left->normalForm() * std_form._right->normalForm();
+	     }
+	     //std::cout << "creating symbol for " << this->toString() << ",";
+	     return Sym(std_form._op, 
+			std_form._left ? std_form._left->normalForm().copyMaybe() : NULL,
+			std_form._right ? std_form._right->normalForm().copyMaybe() : NULL);
+	   }
+	   return *this;
 	 }
 
 	 SymPVec subexps;
@@ -917,6 +934,7 @@ namespace Symath {
 	    }
        
 	    Sym left_multiple = left_exp.GetMultiple();
+	    assert(left_multiple.isRational());
 	    Sym left = (left_exp / left_multiple).sortedForm();
 
 	    Sym new_multiple = left_multiple; 
@@ -930,6 +948,7 @@ namespace Symath {
 	       if ( !(*spviB) ) std::cerr << " BOMB " << std::endl;
 	       Sym& right_exp = **spviB;
 	       Sym right_multiple = right_exp.GetMultiple();
+	       assert(right_multiple.isRational());
 	       /// is 0, remove
 	       if ( right_exp.isZero() || right_multiple.isZero() )
 	       {
@@ -950,16 +969,13 @@ namespace Symath {
 	       ++spviB;
 	    } /// end while B
 	    //std::cout << std::endl;
+	    // build the new summed expression. Don't introduce products with 0, 1 or -1
 	    if ( new_multiple.isZero() ) 
-	    { // we can remove left, there are none
+	    {  // we can remove left, there are none
 	       subexps.erase(spviA++);
 	       continue;
-	    }
-
-	    Sym mul_sym = new_multiple * left;
-
-	    // build the new summed expression. Don't introduce products with 1 or -1
-	    if ( new_multiple == Sym(-1) )
+	    } 
+	    else if ( new_multiple == Sym(-1) )
 	       *spviA = (-left).copyMaybe();  // have to copy since we are assigning ourself.
 	    else if ( new_multiple == Sym(1) )
 	       *spviA = left.copyMaybe();

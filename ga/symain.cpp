@@ -13,15 +13,18 @@ int main( int argc, char** argv )
   std::cout << " one " << one << " = " << S(one) << " = " << S(1) << " = " 
 	    << S("1") << " T " << one.isOne() << std::endl;
   std::cout << " zero " << zero << " = " << S(zero) << " = " << S(0) << " = " 
-	    << S("0") << " T " << zero.isZero() << std::endl;
+	    << S("0") << " T " << zero.isZero() << "," << S(0).isZero() << std::endl;
 
   S a("a");
   S b("b");
   S c("c");
   S d("d");
 
+  std::cout << "0*a" << a * S(0) << std::endl;
 
+  std::cout << ".";
   S d1 = ((a + S(2)) * (b + S(3)) * (b + S(4)));
+  std::cout << "..";
   //cout << " d1 = " << d1 << " == " << d1.normalForm() << endl;
   S d2 = d1 / d1.normalForm();
   cout << " d2 = " << d1 << " / " << d1.normalForm() << endl;
